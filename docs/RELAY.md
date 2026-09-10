@@ -29,7 +29,8 @@ environment equivalent, because the relay's home is a container:
 | `--listen` | `SONAR_RELAY_LISTEN` | `:8787` | Address to bind |
 | `--db` | `SONAR_RELAY_DB` | `./relay.db` | SQLite file |
 | `--database-url` | `DATABASE_URL` | — | Postgres URL; replaces SQLite when set |
-| `--project-keys` | `SONAR_RELAY_PROJECT_KEYS` | — | Comma-separated keys that authorise `/v1` |
+| `--project-keys` | `SONAR_RELAY_PROJECT_KEYS` | — | Comma-separated keys that authorise `/v1/events` |
+| `--admin-keys` | `SONAR_RELAY_ADMIN_KEYS` | project keys | Comma-separated keys that authorise `/v1/stats` |
 | `--retention-days` | `SONAR_RELAY_RETENTION_DAYS` | `90` | Days of raw events to keep |
 | `--log-level` | — | `info` | `debug`, `info`, `warn`, `error` |
 
@@ -116,6 +117,31 @@ schema is created on first connect either way.
 answers "is this process alive", which is the question an orchestrator is
 asking. The image is distroless and has no shell, so there is no `HEALTHCHECK`
 in it; point the platform's probe at `/healthz`.
+
+## Two kinds of key
+
+`--project-keys` authorises posting. `--admin-keys` authorises reading
+aggregates. With no admin keys the project keys do both, which is what every
+deployment before this option did and what a relay behind a VPN still wants.
+
+They are split because **a shipped client cannot hold a secret**. The desktop
+app posts its batches with a key compiled into a binary anyone can unpack, so
+that key has to be worth nothing beyond posting. With an admin key configured,
+extracting the shipped one buys the ability to send rate-limited events and no
+ability to read anything back:
+
+```sh
+sonar relay serve \
+  --project-keys "$(openssl rand -hex 24)" \
+  --admin-keys   "$(openssl rand -hex 24)"
+```
+
+Admin is not a superset: an admin key does not post events. Two keys with two
+jobs is easier to reason about — and easier to rotate — than a hierarchy.
+
+Rotating the shipped key means shipping a release, so treat it as a write key
+and not as a credential: the rate limiter, not the key, is what keeps intake
+honest.
 
 ## The HTTP surface
 

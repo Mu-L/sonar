@@ -19,6 +19,7 @@ var (
 	relayDB          string
 	relayDatabaseURL string
 	relayProjectKeys []string
+	relayAdminKeys   []string
 	relayRetention   int
 	relayLogLevel    string
 )
@@ -67,7 +68,9 @@ func init() {
 	relayServeCmd.Flags().StringVar(&relayDatabaseURL, "database-url", "",
 		"Postgres URL; when set it replaces SQLite (env DATABASE_URL)")
 	relayServeCmd.Flags().StringSliceVar(&relayProjectKeys, "project-keys", nil,
-		"Keys that authorise /v1 requests; repeat or comma-separate (env SONAR_RELAY_PROJECT_KEYS)")
+		"Keys that authorise /v1/events; repeat or comma-separate (env SONAR_RELAY_PROJECT_KEYS)")
+	relayServeCmd.Flags().StringSliceVar(&relayAdminKeys, "admin-keys", nil,
+		"Keys that authorise /v1/stats; defaults to --project-keys (env SONAR_RELAY_ADMIN_KEYS)")
 	relayServeCmd.Flags().IntVar(&relayRetention, "retention-days", 0,
 		"Days of raw events to keep; rollups are kept forever (default 90, env SONAR_RELAY_RETENTION_DAYS)")
 	relayServeCmd.Flags().StringVar(&relayLogLevel, "log-level", "info",
@@ -93,6 +96,13 @@ func runRelayServe(cmd *cobra.Command, _ []string) error {
 		keys = splitKeys(os.Getenv("SONAR_RELAY_PROJECT_KEYS"))
 	}
 
+	// Unset means /v1/stats keeps falling back to the project keys, so an
+	// existing deployment that adds nothing behaves exactly as it did.
+	adminKeys := relayAdminKeys
+	if len(adminKeys) == 0 {
+		adminKeys = splitKeys(os.Getenv("SONAR_RELAY_ADMIN_KEYS"))
+	}
+
 	retention, err := relayRetentionDuration()
 	if err != nil {
 		return err
@@ -112,6 +122,7 @@ func runRelayServe(cmd *cobra.Command, _ []string) error {
 		Listen:      listen,
 		Store:       store,
 		ProjectKeys: keys,
+		AdminKeys:   adminKeys,
 		Retention:   retention,
 		Logger:      logger,
 	})

@@ -228,6 +228,88 @@ func TestAuth(t *testing.T) {
 	})
 }
 
+func TestAdminKeysGateStatsOnly(t *testing.T) {
+	// The case the split exists for: the key the desktop ships posts events
+	// and reads nothing.
+	s, _ := newTestServer(t, Options{
+		ProjectKeys: []string{"write-key"},
+		AdminKeys:   []string{"admin-key"},
+	})
+
+	stats := func(headers map[string]string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/v1/stats", nil)
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("the write key still posts events", func(t *testing.T) {
+		if rec := post(t, s, okBody, map[string]string{"X-Sonar-Key": "write-key"}); rec.Code != http.StatusAccepted {
+			t.Fatalf("status = %d (%s), want 202", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("the write key does not read stats", func(t *testing.T) {
+		rec := stats(map[string]string{"X-Sonar-Key": "write-key"})
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("a project key read /v1/stats: %d %s", rec.Code, rec.Body.String())
+		}
+		// The message has to name the key it wants, or the operator goes
+		// hunting for a typo in a key that is not wrong, just not admin.
+		if got := decodeError(t, rec); !strings.Contains(got.Reason, "admin") {
+			t.Fatalf("reason = %q, want it to name the admin key", got.Reason)
+		}
+	})
+	t.Run("the admin key reads stats", func(t *testing.T) {
+		if rec := stats(map[string]string{"X-Sonar-Key": "admin-key"}); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d (%s), want 200", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("the admin key is not a write key", func(t *testing.T) {
+		// Deliberately one-directional: admin is not a superset. Two keys with
+		// two jobs is easier to reason about than a hierarchy.
+		if rec := post(t, s, okBody, map[string]string{"X-Sonar-Key": "admin-key"}); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("an admin key posted events: %d %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("bearer works for admin too", func(t *testing.T) {
+		if rec := stats(map[string]string{"Authorization": "Bearer admin-key"}); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+	})
+}
+
+func TestNoAdminKeysFallsBackToProjectKeys(t *testing.T) {
+	// Every deployment that existed before AdminKeys: one key, both routes.
+	s, _ := newTestServer(t, Options{ProjectKeys: []string{"only-key"}})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/stats", nil)
+	req.Header.Set("X-Sonar-Key", "only-key")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the project key stopped reading stats: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminKeysWithoutProjectKeys(t *testing.T) {
+	// The hosted shape once a public client posts: open intake, closed reads.
+	s, _ := newTestServer(t, Options{AdminKeys: []string{"admin-key"}})
+
+	if rec := post(t, s, okBody, nil); rec.Code != http.StatusAccepted {
+		t.Fatalf("intake should stay open with no project keys: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/stats", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("stats answered without the admin key: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestNoKeysMeansOpen(t *testing.T) {
 	s, _ := newTestServer(t, Options{})
 	if rec := post(t, s, okBody, nil); rec.Code != http.StatusAccepted {

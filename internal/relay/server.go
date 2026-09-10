@@ -25,8 +25,21 @@ type Options struct {
 	// Store is the database. Required.
 	Store Storage
 	// ProjectKeys, when non-empty, turns on authentication: every request to
-	// /v1/events and /v1/stats must present one of these keys.
+	// /v1/events must present one of these keys, and so must /v1/stats unless
+	// AdminKeys is set.
 	ProjectKeys []string
+	// AdminKeys, when non-empty, takes over /v1/stats: a project key no longer
+	// reads aggregates, only these do.
+	//
+	// The split exists because a shipped client cannot hold a secret. The
+	// desktop app posts events with a key compiled into a binary anyone can
+	// unpack, so that key has to be worth nothing beyond posting: with
+	// AdminKeys set, extracting it buys the ability to send rate-limited
+	// events and no ability to read anything back.
+	//
+	// Empty means /v1/stats falls back to ProjectKeys, which is what every
+	// deployment before this option did — one key, both routes.
+	AdminKeys []string
 	// Retention is how long raw events are kept. Zero means 90 days. Rollups
 	// are kept forever.
 	Retention time.Duration
@@ -50,6 +63,7 @@ type Server struct {
 	now     func() time.Time
 	limiter *limiter
 	keys    []string
+	admin   []string
 	mux     *http.ServeMux
 
 	ln   net.Listener
@@ -90,12 +104,8 @@ func New(opts Options) (*Server, error) {
 		burst = DefaultBurst
 	}
 
-	keys := make([]string, 0, len(opts.ProjectKeys))
-	for _, k := range opts.ProjectKeys {
-		if k = strings.TrimSpace(k); k != "" {
-			keys = append(keys, k)
-		}
-	}
+	keys := cleanKeys(opts.ProjectKeys)
+	admin := cleanKeys(opts.AdminKeys)
 
 	s := &Server{
 		opts:    opts,
@@ -104,6 +114,7 @@ func New(opts Options) (*Server, error) {
 		now:     opts.Now,
 		limiter: newLimiter(rate, burst, opts.Now),
 		keys:    keys,
+		admin:   admin,
 	}
 	s.mux = http.NewServeMux()
 	// Method-and-path patterns, so a GET to /v1/events is a 405 from the
@@ -169,6 +180,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	s.log.Info("relay listening",
 		"addr", s.Addr(),
 		"auth", len(s.keys) > 0,
+		"admin_auth", len(s.admin) > 0,
 		"retention_days", int(s.opts.Retention/(24*time.Hour)))
 
 	errc := make(chan error, 1)
@@ -279,12 +291,34 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// authorized reports whether the request carries a configured project key.
-// With no keys configured the relay is open, which is what a private
-// deployment behind a VPN wants; the moment one key exists, every /v1 route
-// needs one.
-func (s *Server) authorized(r *http.Request) bool {
-	if len(s.keys) == 0 {
+// cleanKeys trims and drops the empties, so a trailing comma in
+// SONAR_RELAY_PROJECT_KEYS cannot configure an empty key that matches an empty
+// header.
+func cleanKeys(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, k := range in {
+		if k = strings.TrimSpace(k); k != "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// statsKeys is who may read aggregates: the admin keys when there are any, and
+// otherwise the project keys, which is how every deployment before AdminKeys
+// existed behaved.
+func (s *Server) statsKeys() []string {
+	if len(s.admin) > 0 {
+		return s.admin
+	}
+	return s.keys
+}
+
+// authorized reports whether the request carries one of `keys`. An empty set
+// is an open route, which is what a private deployment behind a VPN wants; the
+// moment one key exists, the route needs one.
+func (s *Server) authorized(r *http.Request, keys []string) bool {
+	if len(keys) == 0 {
 		return true
 	}
 	given := strings.TrimSpace(r.Header.Get("X-Sonar-Key"))
@@ -301,12 +335,20 @@ func (s *Server) authorized(r *http.Request) bool {
 	ok := false
 	// Every key is compared, in constant time, so neither the number of
 	// configured keys nor the position of the match is timeable.
-	for _, k := range s.keys {
+	for _, k := range keys {
 		if subtle.ConstantTimeCompare([]byte(k), []byte(given)) == 1 {
 			ok = true
 		}
 	}
 	return ok
+}
+
+// article is "an" before admin and "a" before project, so the sentence reads.
+func article(word string) string {
+	if word == "admin" {
+		return "an"
+	}
+	return "a"
 }
 
 func cutPrefixFold(s, prefix string) (string, bool) {
@@ -317,7 +359,7 @@ func cutPrefixFold(s, prefix string) (string, bool) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
+	if !s.authorized(r, s.keys) {
 		writeError(w, &Error{Code: "unauthorized",
 			Reason: "this relay requires a project key in X-Sonar-Key or Authorization: Bearer",
 			status: http.StatusUnauthorized})
@@ -382,9 +424,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
-	if !s.authorized(r) {
+	if !s.authorized(r, s.statsKeys()) {
+		// Name the key it actually wants: an operator holding the project key
+		// their client ships would otherwise read this as "my key is wrong"
+		// and go looking for a typo.
+		which := "project"
+		if len(s.admin) > 0 {
+			which = "admin"
+		}
 		writeError(w, &Error{Code: "unauthorized",
-			Reason: "this relay requires a project key in X-Sonar-Key or Authorization: Bearer",
+			Reason: "this relay requires " + article(which) + " " + which +
+				" key in X-Sonar-Key or Authorization: Bearer",
 			status: http.StatusUnauthorized})
 		return
 	}
