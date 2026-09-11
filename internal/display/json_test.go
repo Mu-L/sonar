@@ -29,7 +29,7 @@ func TestRenderJSONEmitsContractAndLegacyFields(t *testing.T) {
 	}
 	row := rows[0]
 	for _, k := range []string{"display_name", "ppid", "project_root", "group",
-		"group_source", "stats", "run", "exposed_urls", "started_at", "name",
+		"group_source", "stats", "run", "shares", "exposed_urls", "started_at", "name",
 		"is_app", "service_unit", "session", "proxy_id", "proxy_target_port"} {
 		if _, ok := row[k]; !ok {
 			t.Errorf("contract key %q missing", k)

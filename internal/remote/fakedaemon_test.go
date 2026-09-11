@@ -53,7 +53,7 @@ func newFakeDaemon(t *testing.T) *fakeDaemon {
 			At:       "2026-09-06T10:00:00Z",
 			Ports:    []state.Port{},
 			Groups:   []state.Group{},
-			Tunnels:  []state.Tunnel{},
+			Shares:   []state.Share{},
 			Proxies:  []state.Proxy{},
 			Sessions: []state.SessionRecord{},
 			Hosts:    []state.Host{{Name: state.LocalhostName, Address: state.LocalhostName, Status: state.HostConnected}},

@@ -56,20 +56,20 @@ func TestDiffGroupsComparedByStatusAndMembers(t *testing.T) {
 	}
 }
 
-func TestDiffTunnelsProxiesSessionsByID(t *testing.T) {
+func TestDiffSharesProxiesSessionsByID(t *testing.T) {
 	prev := Snapshot{
-		Tunnels:  []Tunnel{{ID: "t1", Status: "ready"}},
+		Shares:   []Share{{ID: "t1", Status: "ready"}},
 		Proxies:  []Proxy{{ID: "p1", ListenPort: 3002}},
 		Sessions: []SessionRecord{{Session: Session{ID: "s1"}, Runs: 1}},
 	}
 	next := Snapshot{
-		Tunnels:  []Tunnel{{ID: "t1", Status: "degraded"}},
+		Shares:   []Share{{ID: "t1", Status: "degraded"}},
 		Proxies:  []Proxy{},
 		Sessions: []SessionRecord{{Session: Session{ID: "s1"}, Runs: 1}, {Session: Session{ID: "s2"}}},
 	}
 	d := Diff(prev, next)
-	if len(d.Tunnels.Updated) != 1 {
-		t.Fatalf("tunnels updated = %+v", d.Tunnels.Updated)
+	if len(d.Shares.Updated) != 1 {
+		t.Fatalf("shares updated = %+v", d.Shares.Updated)
 	}
 	if len(d.Proxies.Removed) != 1 || d.Proxies.Removed[0] != "p1" {
 		t.Fatalf("proxies removed = %v", d.Proxies.Removed)
@@ -79,8 +79,8 @@ func TestDiffTunnelsProxiesSessionsByID(t *testing.T) {
 	}
 }
 
-func TestDiffCarriesExposuresActive(t *testing.T) {
-	if d := Diff(Snapshot{}, Snapshot{ExposuresActive: 3, At: "now"}); d.ExposuresActive != 3 || d.At != "now" {
+func TestDiffCarriesSharesActive(t *testing.T) {
+	if d := Diff(Snapshot{}, Snapshot{SharesActive: 3, At: "now"}); d.SharesActive != 3 || d.At != "now" {
 		t.Fatalf("%+v", d)
 	}
 }

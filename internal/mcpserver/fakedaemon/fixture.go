@@ -73,7 +73,7 @@ func DefaultPorts() []state.Port {
 			Run:         &state.Run{ID: "run-7f3a", Group: "shop", Name: "api", RootPID: 4100},
 			Stats:       &state.Stats{CPUPercent: 1.5, MemoryRSS: 84 << 20, ThreadCount: 11, Uptime: "12m0s", State: "running", Connections: 2},
 			Health:      &state.Health{Status: state.HealthOK, Code: 200, LatencyMs: 3, Reason: "healthy"},
-			ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+			ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 		},
 		{
 			Port: 5173, BindAddress: "127.0.0.1", IPVersion: "IPv4",
@@ -85,7 +85,7 @@ func DefaultPorts() []state.Port {
 			Type: state.TypeUser, User: "dev",
 			Stats:       &state.Stats{CPUPercent: 0.4, MemoryRSS: 61 << 20, ThreadCount: 9, Uptime: "9m0s", State: "running"},
 			Health:      &state.Health{Status: state.HealthOK, Code: 200, LatencyMs: 2, Reason: "healthy"},
-			ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+			ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 		},
 		{
 			Port: 5432, BindAddress: "0.0.0.0", IPVersion: "IPv4",
@@ -99,7 +99,7 @@ func DefaultPorts() []state.Port {
 				Container: "shop-db-1", Image: "postgres:16",
 				ComposeService: "db", ComposeProject: "shop-infra", ContainerPort: 5432,
 			},
-			ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+			ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 		},
 		{
 			Port: 8080, BindAddress: "0.0.0.0", IPVersion: "IPv4",
@@ -113,14 +113,14 @@ func DefaultPorts() []state.Port {
 				Container: "shop-gateway-1", Image: "nginx:1.27",
 				ComposeService: "gateway", ComposeProject: "shop-infra", ContainerPort: 80,
 			},
-			ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+			ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 		},
 		{
 			Port: 22, BindAddress: "0.0.0.0", IPVersion: "IPv4",
 			URL: "http://localhost:22", PID: 640, PPID: 1,
 			Process: "sshd", DisplayName: "sshd", Command: "/usr/sbin/sshd -D",
 			Type: state.TypeSystem, User: "root", ServiceUnit: strp("ssh.service"),
-			ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+			ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 		},
 		{
 			Port: 7000, BindAddress: "127.0.0.1", IPVersion: "IPv4",
@@ -128,7 +128,7 @@ func DefaultPorts() []state.Port {
 			Process: "ControlCenter", DisplayName: "ControlCenter",
 			Command: "/System/Applications/ControlCenter.app",
 			Type:    state.TypeSystem, IsApp: true, User: "dev",
-			ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+			ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 		},
 	}
 }
@@ -188,7 +188,7 @@ func ManyPorts(n int) []state.Port {
 			DisplayName: fmt.Sprintf("svc-%d", i),
 			Command:     "node worker.js",
 			Type:        state.TypeUser, User: "dev",
-			ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+			ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 		})
 	}
 	return out

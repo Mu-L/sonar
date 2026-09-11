@@ -528,7 +528,7 @@ func TestStatsTickDoesNotSwallowARemoteChange(t *testing.T) {
 	remote = state.Rows{
 		Ports: []state.Port{{
 			Port: 3000, BindAddress: "127.0.0.1", PID: 4242, Process: "node",
-			ExposedURLs: []string{}, Stats: &state.Stats{CPUPercent: 42},
+			ExposedURLs: []string{}, Shares: []state.Share{}, Stats: &state.Stats{CPUPercent: 42},
 		}},
 		Hosts: []state.Host{{Name: state.LocalhostName, Status: state.HostConnected}},
 	}.Tag("hetzner").Normalize()

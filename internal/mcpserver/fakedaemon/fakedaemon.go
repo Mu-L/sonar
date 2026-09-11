@@ -303,7 +303,7 @@ var addrSeq atomic.Int64
 func completeDelta(d state.Delta) state.Delta {
 	d.Ports = completeChange(d.Ports)
 	d.Groups = completeChange(d.Groups)
-	d.Tunnels = completeChange(d.Tunnels)
+	d.Shares = completeChange(d.Shares)
 	d.Proxies = completeChange(d.Proxies)
 	d.Sessions = completeChange(d.Sessions)
 	d.Hosts = completeChange(d.Hosts)

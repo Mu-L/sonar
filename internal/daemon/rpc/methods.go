@@ -863,77 +863,64 @@ func (RemoteCallResult) JSONSchema() *jsonschema.Schema {
 	}
 }
 
-// ---------------------------------------------------------------- expose ---
+// ----------------------------------------------------------------- share ---
+//
+// Described so the protocol has the shape before anything serves it: no
+// package registers a handler for share.* yet (docs/SHARE.md in sonar-relay).
 
-type ExposeCreateParams struct {
-	Target   string  `json:"target"`
-	Provider *string `json:"provider,omitempty"`
-	Name     *string `json:"name,omitempty"`
-	Auth     *string `json:"auth,omitempty"`
-	TTL      *string `json:"ttl,omitempty"`
-	Persist  bool    `json:"persist,omitempty"`
-	Scope    *string `json:"scope,omitempty"`
+// ShareCreateParams makes one listening service reachable. Reach is always
+// written down — "lan" or "public" — because there is no safe default between
+// "this room" and "the internet". ListenPort applies to a LAN share only.
+// Replace stops a share already live for the same key rather than failing with
+// share_limit_reached.
+type ShareCreateParams struct {
+	Target     Selector `json:"target"`
+	Reach      string   `json:"reach" jsonschema:"enum=lan,enum=public"`
+	TTL        *string  `json:"ttl,omitempty"`
+	ListenPort *int     `json:"listen_port,omitempty"`
+	Replace    bool     `json:"replace,omitempty"`
 }
 
-type ExposeCreateResult struct {
+type ShareCreateResult struct {
 	MutationResult
-	Tunnel state.Tunnel `json:"tunnel"`
+	Share state.Share `json:"share"`
 }
 
-type ExposeStopParams struct {
-	ID   *string `json:"id,omitempty"`
-	Port *int    `json:"port,omitempty"`
-	All  bool    `json:"all,omitempty"`
+// ShareStopParams names the shares to stop: one by id, the ones on a target,
+// or all of them.
+type ShareStopParams struct {
+	ID     *string   `json:"id,omitempty"`
+	Target *Selector `json:"target,omitempty"`
+	All    bool      `json:"all,omitempty"`
 }
 
-type ExposeStopResult struct {
+type ShareStopResult struct {
 	MutationResult
 	Stopped []string `json:"stopped"`
 }
 
-type ExposeListResult struct {
-	Tunnels []state.Tunnel `json:"tunnels"`
+type ShareListResult struct {
+	Shares []state.Share `json:"shares"`
 }
 
-type ExposeLogsParams struct {
+// ShareExtendParams pushes a live share's expiry out by TTL.
+type ShareExtendParams struct {
+	ID  string `json:"id"`
+	TTL string `json:"ttl"`
+}
+
+type ShareExtendResult struct {
+	Share state.Share `json:"share"`
+}
+
+// ShareLogsParams tails the relay's view of a share's recent requests.
+type ShareLogsParams struct {
 	ID   string `json:"id"`
 	Tail int    `json:"tail,omitempty"`
 }
 
-type ExposeLogsResult struct {
+type ShareLogsResult struct {
 	Lines []string `json:"lines"`
-}
-
-type ExposeProvidersResult struct {
-	Providers []ProviderInfo `json:"providers"`
-}
-
-type ProviderInfo struct {
-	Name         string   `json:"name"`
-	Available    string   `json:"available"`
-	Capabilities []string `json:"capabilities"`
-	Hint         string   `json:"hint,omitempty"`
-}
-
-type ExposeInstallProviderParams struct {
-	Provider string `json:"provider"`
-	Confirm  bool   `json:"confirm"`
-}
-
-type ExposeInstallProviderResult struct {
-	MutationResult
-	SubscriptionID string `json:"subscription_id"`
-}
-
-type ExposeInstallProviderChunk struct {
-	Phase   string `json:"phase"`
-	Percent int    `json:"percent"`
-	Message string `json:"message,omitempty"`
-}
-
-type ExposeInstallProviderEnd struct {
-	Path    string `json:"path"`
-	Version string `json:"version"`
 }
 
 // ------------------------------------------------------------------- map ---

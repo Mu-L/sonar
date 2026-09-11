@@ -48,7 +48,7 @@ var (
 )
 
 // RegisterHandler adds a method to the dispatcher. Packages that own a
-// namespace (groups, killer, store, expose, sessions) call it from their own
+// namespace (groups, killer, store, share, sessions) call it from their own
 // init() so this package never imports them (contract §8). Registering the
 // same method twice panics: two owners for one method is always a bug.
 func RegisterHandler(method string, h Handler) {

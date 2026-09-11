@@ -29,14 +29,14 @@ func TestTagStampsEveryCollection(t *testing.T) {
 		Ports:    []Port{port("localhost", 3000)},
 		Groups:   []Group{{Name: "api"}},
 		Sessions: []SessionRecord{{Session: Session{ID: "s1"}}},
-		Tunnels:  []Tunnel{{ID: "t1"}},
+		Shares:   []Share{{ID: "t1"}},
 		Proxies:  []Proxy{{ID: "p1"}},
 		Hosts:    []Host{{Name: LocalhostName, Status: HostConnected}},
 	}
 	out := in.Tag("hetzner")
 
 	if out.Ports[0].Host != "hetzner" || out.Groups[0].Host != "hetzner" ||
-		out.Sessions[0].Host != "hetzner" || out.Tunnels[0].Host != "hetzner" ||
+		out.Sessions[0].Host != "hetzner" || out.Shares[0].Host != "hetzner" ||
 		out.Proxies[0].Host != "hetzner" {
 		t.Errorf("Tag left a collection untagged: %+v", out)
 	}
@@ -139,7 +139,7 @@ func TestFilterSnapshotKeepsOnlyTheAskedHosts(t *testing.T) {
 
 func TestFilteredCollectionsAreNeverNull(t *testing.T) {
 	got := FilterSnapshot(Snapshot{}, LocalOnly())
-	if got.Ports == nil || got.Groups == nil || got.Tunnels == nil ||
+	if got.Ports == nil || got.Groups == nil || got.Shares == nil ||
 		got.Proxies == nil || got.Sessions == nil || got.Hosts == nil {
 		t.Errorf("filtering left a null collection: %+v", got)
 	}

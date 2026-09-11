@@ -13,9 +13,8 @@ func TestEveryRegistryCodeHasAName(t *testing.T) {
 	for _, c := range []int{CodeInvalidParams, CodeInternal, CodeNotFound, CodeAmbiguous,
 		CodePermission, CodeUnsupported, CodeBusy, CodeInvalidConfig, CodeAlreadyRunning,
 		CodeTimeout, CodeInvalidSelector, CodeOutsideHome, CodeTargetNotListening,
-		CodeProviderNotInstalled, CodeProviderUnavailable, CodeProviderNotPermitted,
-		CodeProviderAuthFailed, CodeProviderCrashed, CodeProviderTimeout,
-		CodeProviderLimitReached, CodeListenPortInUse, CodeInstallDeclined,
+		CodeShareLimitReached, CodeListenPortInUse, CodeNotSignedIn, CodeShareExpired,
+		CodeRelayUnreachable, CodeShareBlocked,
 		CodeSessionNotFound, CodeClaimConflict} {
 		if CodeName(c) == "" {
 			t.Fatalf("code %d has no data.code name", c)
@@ -23,6 +22,31 @@ func TestEveryRegistryCodeHasAName(t *testing.T) {
 	}
 	if CodeName(4242) != "internal" {
 		t.Fatalf("unknown codes must fall back to internal, got %q", CodeName(4242))
+	}
+}
+
+// The 1100 block is the share block (docs/SHARE.md in sonar-relay). The
+// numbers are the wire contract, so they are pinned here, and the provider
+// codes the old expose design reserved are gone rather than renamed.
+func TestShareErrorCodes(t *testing.T) {
+	want := map[int]string{
+		1100: "target_not_listening",
+		1107: "share_limit_reached",
+		1108: "listen_port_in_use",
+		1110: "not_signed_in",
+		1111: "share_expired",
+		1112: "relay_unreachable",
+		1113: "share_blocked",
+	}
+	for code, name := range want {
+		if got := CodeName(code); got != name {
+			t.Errorf("CodeName(%d) = %q, want %q", code, got, name)
+		}
+	}
+	for _, code := range []int{1101, 1102, 1103, 1104, 1105, 1106, 1109} {
+		if got, ok := codeNames[code]; ok {
+			t.Errorf("code %d is still registered as %q; the provider codes were deleted", code, got)
+		}
 	}
 }
 

@@ -52,31 +52,40 @@ type Group struct {
 // row.
 func (g Group) Key() string { return PrefixKey(g.Host, g.Name) }
 
-// Tunnel and Proxy are owned by spec 3; Claim and SessionRecord by spec 2.
+// Share and Proxy are owned by spec 3; Claim and SessionRecord by spec 2.
 // Declared here so the snapshot has a stable shape from day one; fields follow
 // those specs.
-type Tunnel struct {
+//
+// Share is one service made reachable from somewhere else by `share.create`:
+// on this network (reach "lan") or through the relay (reach "public"). The
+// relay is the only provider, so there is no provider, auth, persist or pid
+// here. A share is keyed per checkout — (account, repo, worktree, service) —
+// which is why it carries the group's Repo and Worktree and not only its name.
+// Nothing creates one yet.
+type Share struct {
 	Host          string  `json:"host"`
 	ID            string  `json:"id"`
 	TargetPort    int     `json:"target_port"`
 	TargetGroup   *string `json:"target_group" jsonschema:"nullable"`
 	TargetService *string `json:"target_service" jsonschema:"nullable"`
-	Provider      string  `json:"provider"`
-	Scope         string  `json:"scope"`
-	PublicURL     string  `json:"public_url"`
-	Name          string  `json:"name"`
-	Auth          bool    `json:"auth"`
-	Status        string  `json:"status"`
-	StatusReason  string  `json:"status_reason"`
-	Persist       bool    `json:"persist"`
-	CreatedAt     string  `json:"created_at"`
-	ExpiresAt     *string `json:"expires_at" jsonschema:"nullable"`
-	PID           int     `json:"pid"`
-	Requests      int64   `json:"requests"`
+	// Repo and Worktree are the target group's Group.Repo and Group.Worktree:
+	// the checkout half of the key. Both are empty for a port with no group.
+	Repo         string  `json:"repo"`
+	Worktree     string  `json:"worktree"`
+	Reach        string  `json:"reach" jsonschema:"enum=lan,enum=public"`
+	URL          string  `json:"url"`
+	Name         string  `json:"name"`
+	Status       string  `json:"status"`
+	StatusReason string  `json:"status_reason"`
+	CreatedAt    string  `json:"created_at"`
+	ExpiresAt    *string `json:"expires_at" jsonschema:"nullable"`
+	LastActiveAt *string `json:"last_active_at" jsonschema:"nullable"`
+	Requests     int64   `json:"requests"`
+	BytesOut     int64   `json:"bytes_out"`
 }
 
-// Key is the delta identity: the tunnel id, namespaced by host.
-func (t Tunnel) Key() string { return PrefixKey(t.Host, t.ID) }
+// Key is the delta identity: the share id, namespaced by host.
+func (s Share) Key() string { return PrefixKey(s.Host, s.ID) }
 
 // Proxy is a daemon-owned TCP (or HTTP) forwarder. It also appears in the
 // ports collection as a row with Type == TypeProxy.

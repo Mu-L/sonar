@@ -106,7 +106,7 @@ func (b *bridge) Rows() state.Rows {
 	rows := state.Rows{
 		Ports:    b.snap.Ports,
 		Groups:   b.snap.Groups,
-		Tunnels:  b.snap.Tunnels,
+		Shares:   b.snap.Shares,
 		Proxies:  b.snap.Proxies,
 		Sessions: b.snap.Sessions,
 	}.Tag(b.cfg.Name)

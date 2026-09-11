@@ -11,12 +11,16 @@ type Change[T any] struct {
 
 // Delta is the incremental update broadcast to state.subscribe subscribers.
 type Delta struct {
-	Seq             uint64                `json:"seq"`
-	At              string                `json:"at"`
+	Seq          uint64 `json:"seq"`
+	At           string `json:"at"`
+	SharesActive int    `json:"shares_active"`
+	// ExposuresActive is retired: nothing sets it, so it always marshals as 0.
+	// Deprecated 2026-09-11 in favour of SharesActive; delete it in the release
+	// after the one that ships this comment, with Snapshot.ExposuresActive.
 	ExposuresActive int                   `json:"exposures_active"`
 	Ports           Change[Port]          `json:"ports"`
 	Groups          Change[Group]         `json:"groups"`
-	Tunnels         Change[Tunnel]        `json:"tunnels"`
+	Shares          Change[Share]         `json:"shares"`
 	Proxies         Change[Proxy]         `json:"proxies"`
 	Sessions        Change[SessionRecord] `json:"sessions"`
 	Hosts           Change[Host]          `json:"hosts"`
@@ -28,7 +32,7 @@ type Event struct {
 	// Host is the machine the event happened on: "localhost", or the
 	// registered name of the remote host whose bridge forwarded it.
 	Host  string         `json:"host,omitempty"`
-	Kind  string         `json:"kind"` // port_up port_down port_restarted group_up group_down health_changed scan_error daemon_stopping db_reset tunnel_up tunnel_down
+	Kind  string         `json:"kind"` // port_up port_down port_restarted group_up group_down health_changed scan_error daemon_stopping db_reset share_up share_down
 	At    string         `json:"at"`
 	Port  *Port          `json:"port,omitempty"`
 	Group *string        `json:"group,omitempty"`

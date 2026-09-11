@@ -149,10 +149,16 @@ type Port struct {
 	Stats       *Stats       `json:"stats" jsonschema:"nullable"`
 	Health      *Health      `json:"health" jsonschema:"nullable"`
 	Docker      *Docker      `json:"docker" jsonschema:"nullable"`
-	ExposedURLs []string     `json:"exposed_urls"`
-	ProxyID     *string      `json:"proxy_id" jsonschema:"nullable"`
-	ProxyTarget *int         `json:"proxy_target_port" jsonschema:"nullable"`
-	StartedAt   *string      `json:"started_at" jsonschema:"nullable"`
+	// Shares are the live shares whose target is this port. Always an array.
+	Shares []Share `json:"shares"`
+	// ExposedURLs is retired: it never carried a value and always marshals as
+	// [], so a client built against the old schema still finds the key.
+	// Deprecated 2026-09-11 in favour of Shares; delete it in the release after
+	// the one that ships this comment.
+	ExposedURLs []string `json:"exposed_urls"`
+	ProxyID     *string  `json:"proxy_id" jsonschema:"nullable"`
+	ProxyTarget *int     `json:"proxy_target_port" jsonschema:"nullable"`
+	StartedAt   *string  `json:"started_at" jsonschema:"nullable"`
 }
 
 // Key is the delta identity: "<port>:<bind_address>" for a local row and

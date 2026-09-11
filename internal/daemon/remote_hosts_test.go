@@ -39,7 +39,7 @@ func remoteRows(host string, port int) state.Rows {
 		Ports: []state.Port{{
 			Port: port, BindAddress: "127.0.0.1", PID: 4242,
 			Process: "node", DisplayName: "node", Type: state.TypeUser,
-			ExposedURLs: []string{},
+			ExposedURLs: []string{}, Shares: []state.Share{},
 		}},
 		Groups: []state.Group{{Name: "api", Status: "running", Members: []int{port}}},
 		Hosts:  []state.Host{{Name: state.LocalhostName, Status: state.HostConnected}},

@@ -25,7 +25,7 @@ const DefaultIdleTimeout = 30 * time.Minute
 const idleCheckInterval = 5 * time.Second
 
 // Capabilities lists the method families this build serves. Clients read it
-// from daemon.hello to tell whether, say, expose.* exists before calling it.
+// from daemon.hello to tell whether, say, share.* exists before calling it.
 // Later steps append their own family as they land.
 func Capabilities() []string {
 	return append([]string{"state", "ports.read", "ports.kill", "store", "streams"},
@@ -565,7 +565,7 @@ func marshalEvents(events []state.Event, include scanner.Include, hosts state.Ho
 func emptyDelta(d state.Delta) bool {
 	return len(d.Ports.Added) == 0 && len(d.Ports.Updated) == 0 && len(d.Ports.Removed) == 0 &&
 		len(d.Groups.Added) == 0 && len(d.Groups.Updated) == 0 && len(d.Groups.Removed) == 0 &&
-		len(d.Tunnels.Added) == 0 && len(d.Tunnels.Updated) == 0 && len(d.Tunnels.Removed) == 0 &&
+		len(d.Shares.Added) == 0 && len(d.Shares.Updated) == 0 && len(d.Shares.Removed) == 0 &&
 		len(d.Proxies.Added) == 0 && len(d.Proxies.Updated) == 0 && len(d.Proxies.Removed) == 0 &&
 		len(d.Sessions.Added) == 0 && len(d.Sessions.Updated) == 0 && len(d.Sessions.Removed) == 0 &&
 		len(d.Hosts.Added) == 0 && len(d.Hosts.Updated) == 0 && len(d.Hosts.Removed) == 0
@@ -580,9 +580,10 @@ func filterSnapshot(snap state.Snapshot, include scanner.Include, hosts state.Ho
 	if snap.Groups == nil {
 		snap.Groups = []state.Group{}
 	}
-	if snap.Tunnels == nil {
-		snap.Tunnels = []state.Tunnel{}
+	if snap.Shares == nil {
+		snap.Shares = []state.Share{}
 	}
+	snap.Tunnels = []state.Share{} // retired; see state.Snapshot.Tunnels
 	if snap.Proxies == nil {
 		snap.Proxies = []state.Proxy{}
 	}

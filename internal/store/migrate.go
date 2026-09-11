@@ -38,7 +38,7 @@ type Migration struct {
 const (
 	VersionCore     = 1 // renames, group_pins, port_events + ring trigger
 	VersionIndexes  = 2 // history indexes, known_roots
-	VersionTunnels  = 3 // reserved: spec 3
+	VersionShares   = 3 // reserved: spec 3 (shares)
 	VersionProxies  = 4 // reserved: spec 3
 	VersionClaims   = 6 // reserved: spec 2
 	VersionSessions = 5 // reserved: spec 2
@@ -50,7 +50,7 @@ const (
 // feature that owns them. Registering one of these from outside this package
 // is expected; registering anything already taken panics.
 var ReservedVersions = map[int]string{
-	VersionTunnels:  "tunnels",
+	VersionShares:   "shares",
 	VersionProxies:  "proxies",
 	VersionSessions: "sessions",
 	VersionClaims:   "claims",

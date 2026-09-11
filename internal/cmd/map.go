@@ -16,8 +16,10 @@ import (
 var mapCmd = &cobra.Command{
 	Use:   "map <service-port> <listen-port>",
 	Short: "Make a service available on a different port",
-	Long:  "Proxies traffic from listen-port to service-port.\nExample: sonar map 6873 3002 — access the service on 6873 via http://localhost:3002",
-	Args:  cobra.ExactArgs(2),
+	Long: "Proxies traffic from listen-port to service-port, on this machine only: the listen port\n" +
+		"is bound to 127.0.0.1, so nothing else on the network can reach it.\n" +
+		"Example: sonar map 6873 3002 — access the service on 6873 via http://localhost:3002",
+	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		target, err := strconv.Atoi(args[0])
 		if err != nil {
@@ -28,10 +30,9 @@ var mapCmd = &cobra.Command{
 			return fmt.Errorf("invalid listen port: %s", args[1])
 		}
 
-		listenAddr := fmt.Sprintf(":%d", listen)
 		targetAddr := fmt.Sprintf("localhost:%d", target)
 
-		listener, err := net.Listen("tcp", listenAddr)
+		listener, err := listenMap(listen)
 		if err != nil {
 			return fmt.Errorf("failed to listen on port %d: %w", listen, err)
 		}
@@ -61,6 +62,14 @@ var mapCmd = &cobra.Command{
 			go proxy(conn, targetAddr, listen, target)
 		}
 	},
+}
+
+// listenMap opens the listen side of `sonar map` on loopback only. It used to
+// bind every interface while the help promised localhost; making a port
+// reachable from elsewhere is `sonar share`'s job, where the reach is written
+// down.
+func listenMap(port int) (net.Listener, error) {
+	return net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 }
 
 func proxy(src net.Conn, targetAddr string, listenPort, targetPort int) {

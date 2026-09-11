@@ -14,7 +14,7 @@ import "sort"
 type Rows struct {
 	Ports    []Port
 	Groups   []Group
-	Tunnels  []Tunnel
+	Shares   []Share
 	Proxies  []Proxy
 	Sessions []SessionRecord
 	Hosts    []Host
@@ -25,7 +25,7 @@ func RowsOf(s Snapshot) Rows {
 	return Rows{
 		Ports:    s.Ports,
 		Groups:   s.Groups,
-		Tunnels:  s.Tunnels,
+		Shares:   s.Shares,
 		Proxies:  s.Proxies,
 		Sessions: s.Sessions,
 		Hosts:    s.Hosts,
@@ -44,26 +44,31 @@ func (r Rows) Tag(host string) Rows {
 	out := Rows{
 		Ports:    make([]Port, len(r.Ports)),
 		Groups:   make([]Group, len(r.Groups)),
-		Tunnels:  make([]Tunnel, len(r.Tunnels)),
+		Shares:   make([]Share, len(r.Shares)),
 		Proxies:  make([]Proxy, len(r.Proxies)),
 		Sessions: make([]SessionRecord, len(r.Sessions)),
 		Hosts:    make([]Host, len(r.Hosts)),
 	}
 	copy(out.Ports, r.Ports)
 	copy(out.Groups, r.Groups)
-	copy(out.Tunnels, r.Tunnels)
+	copy(out.Shares, r.Shares)
 	copy(out.Proxies, r.Proxies)
 	copy(out.Sessions, r.Sessions)
 	copy(out.Hosts, r.Hosts)
 
 	for i := range out.Ports {
 		out.Ports[i].Host = host
+		// A remote daemon older than the share rename sends no `shares` on its
+		// port rows; the published stream still promises an array.
+		if out.Ports[i].Shares == nil {
+			out.Ports[i].Shares = []Share{}
+		}
 	}
 	for i := range out.Groups {
 		out.Groups[i].Host = host
 	}
-	for i := range out.Tunnels {
-		out.Tunnels[i].Host = host
+	for i := range out.Shares {
+		out.Shares[i].Host = host
 	}
 	for i := range out.Proxies {
 		out.Proxies[i].Host = host
@@ -81,7 +86,7 @@ func (r Rows) Tag(host string) Rows {
 func (r Rows) Append(other Rows) Rows {
 	r.Ports = append(r.Ports, other.Ports...)
 	r.Groups = append(r.Groups, other.Groups...)
-	r.Tunnels = append(r.Tunnels, other.Tunnels...)
+	r.Shares = append(r.Shares, other.Shares...)
 	r.Proxies = append(r.Proxies, other.Proxies...)
 	r.Sessions = append(r.Sessions, other.Sessions...)
 	r.Hosts = append(r.Hosts, other.Hosts...)
@@ -97,8 +102,8 @@ func (r Rows) Normalize() Rows {
 	if r.Groups == nil {
 		r.Groups = []Group{}
 	}
-	if r.Tunnels == nil {
-		r.Tunnels = []Tunnel{}
+	if r.Shares == nil {
+		r.Shares = []Share{}
 	}
 	if r.Proxies == nil {
 		r.Proxies = []Proxy{}
@@ -116,8 +121,9 @@ func (r Rows) Normalize() Rows {
 // counters alone.
 func (r Rows) Into(s Snapshot) Snapshot {
 	r = r.Normalize()
-	s.Ports, s.Groups, s.Tunnels = r.Ports, r.Groups, r.Tunnels
+	s.Ports, s.Groups, s.Shares = r.Ports, r.Groups, r.Shares
 	s.Proxies, s.Sessions, s.Hosts = r.Proxies, r.Sessions, r.Hosts
+	s.Tunnels = []Share{} // retired; see Snapshot.Tunnels
 	return s
 }
 
@@ -203,9 +209,9 @@ func (r Rows) Filter(f HostFilter) Rows {
 			out.Groups = append(out.Groups, g)
 		}
 	}
-	for _, t := range r.Tunnels {
+	for _, t := range r.Shares {
 		if f.Allows(t.Host) {
-			out.Tunnels = append(out.Tunnels, t)
+			out.Shares = append(out.Shares, t)
 		}
 	}
 	for _, p := range r.Proxies {

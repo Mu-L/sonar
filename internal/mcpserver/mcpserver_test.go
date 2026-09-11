@@ -293,8 +293,8 @@ func TestInspectPortNotFound(t *testing.T) {
 func TestInspectPortAmbiguous(t *testing.T) {
 	fx := fakedaemon.DefaultFixture()
 	fx.Ports = append(fx.Ports,
-		state.Port{Port: 9229, BindAddress: "127.0.0.1", IPVersion: "IPv4", PID: 700, Type: state.TypeUser, ExposedURLs: []string{}},
-		state.Port{Port: 9229, BindAddress: "::1", IPVersion: "IPv6", PID: 701, Type: state.TypeUser, ExposedURLs: []string{}},
+		state.Port{Port: 9229, BindAddress: "127.0.0.1", IPVersion: "IPv4", PID: 700, Type: state.TypeUser, ExposedURLs: []string{}, Shares: []state.Share{}},
+		state.Port{Port: 9229, BindAddress: "::1", IPVersion: "IPv6", PID: 701, Type: state.TypeUser, ExposedURLs: []string{}, Shares: []state.Share{}},
 	)
 	h := newHarnessWith(t, fx)
 

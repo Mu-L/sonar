@@ -66,7 +66,7 @@ func NotificationNames() []string {
 }
 
 // Describe registers a method's wire contract. Called from init() here for the
-// core namespaces; the packages that own the expose, map, sessions and claims
+// core namespaces; the packages that own the share, map, sessions and claims
 // namespaces call it from their own init() once they exist.
 func Describe(method string, params, result, chunk, end any) {
 	registry[method] = Description{
@@ -129,7 +129,7 @@ type Document struct {
 // references them directly yet.
 func namedTypes() []any {
 	return []any{
-		state.Port{}, state.Group{}, state.Tunnel{}, state.Proxy{},
+		state.Port{}, state.Group{}, state.Share{}, state.Proxy{},
 		state.Session{}, state.SessionRecord{}, state.Claim{}, state.Host{},
 		state.Snapshot{}, state.Delta{}, state.Event{}, state.Service{},
 		state.Stats{}, state.Health{}, state.Docker{}, state.Run{},
@@ -334,14 +334,12 @@ func init() {
 	Describe("remote.remove", RemoteRemoveParams{}, OKResult{}, nil, nil)
 	Describe("remote.call", RemoteCallParams{}, RemoteCallResult{}, nil, nil)
 
-	// Expose (spec 3).
-	Describe("expose.create", ExposeCreateParams{}, ExposeCreateResult{}, nil, nil)
-	Describe("expose.stop", ExposeStopParams{}, ExposeStopResult{}, nil, nil)
-	Describe("expose.list", Empty{}, ExposeListResult{}, nil, nil)
-	Describe("expose.logs", ExposeLogsParams{}, ExposeLogsResult{}, nil, nil)
-	Describe("expose.providers", Empty{}, ExposeProvidersResult{}, nil, nil)
-	Describe("expose.install_provider", ExposeInstallProviderParams{}, ExposeInstallProviderResult{},
-		ExposeInstallProviderChunk{}, ExposeInstallProviderEnd{})
+	// Share (spec 3, amended by docs/SHARE.md in sonar-relay).
+	Describe("share.create", ShareCreateParams{}, ShareCreateResult{}, nil, nil)
+	Describe("share.stop", ShareStopParams{}, ShareStopResult{}, nil, nil)
+	Describe("share.list", Empty{}, ShareListResult{}, nil, nil)
+	Describe("share.extend", ShareExtendParams{}, ShareExtendResult{}, nil, nil)
+	Describe("share.logs", ShareLogsParams{}, ShareLogsResult{}, nil, nil)
 
 	// Daemon-owned proxies (spec 3).
 	Describe("map.create", MapCreateParams{}, MapCreateResult{}, nil, nil)

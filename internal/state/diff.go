@@ -18,10 +18,10 @@ func DiffWithStats(prev, next Snapshot) Delta { return diff(prev, next, true) }
 
 func diff(prev, next Snapshot, withStats bool) Delta {
 	return Delta{
-		Seq:             next.Seq,
-		At:              next.At,
-		ExposuresActive: next.ExposuresActive,
-		Ports:           diffPorts(prev.Ports, next.Ports, withStats),
+		Seq:          next.Seq,
+		At:           next.At,
+		SharesActive: next.SharesActive,
+		Ports:        diffPorts(prev.Ports, next.Ports, withStats),
 		Groups: diffKeyed(prev.Groups, next.Groups,
 			func(g Group) string { return g.Key() },
 			func(a, b Group) bool {
@@ -30,9 +30,9 @@ func diff(prev, next Snapshot, withStats bool) Delta {
 					reflect.DeepEqual(a.Members, b.Members) &&
 					reflect.DeepEqual(a.Services, b.Services)
 			}),
-		Tunnels: diffKeyed(prev.Tunnels, next.Tunnels,
-			func(t Tunnel) string { return t.Key() },
-			func(a, b Tunnel) bool { return reflect.DeepEqual(a, b) }),
+		Shares: diffKeyed(prev.Shares, next.Shares,
+			func(t Share) string { return t.Key() },
+			func(a, b Share) bool { return reflect.DeepEqual(a, b) }),
 		Proxies: diffKeyed(prev.Proxies, next.Proxies,
 			func(p Proxy) string { return p.Key() },
 			func(a, b Proxy) bool { return reflect.DeepEqual(a, b) }),

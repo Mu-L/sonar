@@ -84,7 +84,7 @@ func portRow(port int, bind string) state.Port {
 	return state.Port{
 		Host: state.LocalhostName, Port: port, BindAddress: bind,
 		Process: "node", DisplayName: "node", Type: state.TypeUser,
-		ExposedURLs: []string{},
+		ExposedURLs: []string{}, Shares: []state.Share{},
 	}
 }
 
@@ -92,7 +92,7 @@ func snapshotWith(pp ...state.Port) state.Snapshot {
 	return state.Snapshot{
 		Ports:    pp,
 		Groups:   []state.Group{{Host: state.LocalhostName, Name: "api", Status: "running", Members: []int{pp[0].Port}}},
-		Tunnels:  []state.Tunnel{},
+		Shares:   []state.Share{},
 		Proxies:  []state.Proxy{},
 		Sessions: []state.SessionRecord{},
 		Hosts: []state.Host{{

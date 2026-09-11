@@ -797,7 +797,7 @@ func (l *Loop) commitScan(c commit) (next, prev state.Snapshot, changed bool) {
 	host.Ports, host.Groups = len(rows), len(groupRows)
 	host.LastSeen = l.lastScanAt.Format(time.RFC3339)
 
-	// Tunnels and proxies belong to spec 3. Every collection is always an
+	// Shares and proxies belong to spec 3. Every collection is always an
 	// array, never null.
 	local := state.Rows{
 		Ports:    rows,
@@ -877,9 +877,9 @@ func (l *Loop) RemoteChanged() {
 	}
 	prev := l.snap
 	next := l.local.Append(l.remoteRows()).Into(state.Snapshot{
-		At:              l.now().Format(time.RFC3339),
-		DaemonVersion:   l.opts.DaemonVersion,
-		ExposuresActive: prev.ExposuresActive,
+		At:            l.now().Format(time.RFC3339),
+		DaemonVersion: l.opts.DaemonVersion,
+		SharesActive:  prev.SharesActive,
 	})
 	if !snapshotChanged(prev, next, true) && !hostChanged(prev, next) {
 		l.mu.Unlock()

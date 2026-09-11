@@ -99,7 +99,7 @@ func (a *Actions) OpenPortForRun(runID string, port int) state.Port {
 		Group: strp(group), GroupSource: srcp(state.SourceStart),
 		Type: state.TypeUser, User: "dev",
 		Run:         &state.Run{ID: runID, Group: group, Name: name, RootPID: pid},
-		ExposedURLs: []string{}, StartedAt: strp(FixtureTime),
+		ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strp(FixtureTime),
 	}
 	if group == "" {
 		row.Group = nil

@@ -11,7 +11,7 @@ import (
 )
 
 // contractMethods is every method the daemon must describe: spec 1's method
-// table, the additions in cross-spec contract §4, and the expose/map
+// table, the additions in cross-spec contract §4, and the share/map
 // namespaces spec 3 reserves.
 var contractMethods = []string{
 	"daemon.hello", "daemon.shutdown", "daemon.status", "daemon.schema",
@@ -25,8 +25,7 @@ var contractMethods = []string{
 	"sessions.list", "sessions.inspect", "sessions.kill",
 	"config.get", "config.set", "config.path",
 	"remote.scan",
-	"expose.create", "expose.stop", "expose.list", "expose.logs",
-	"expose.providers", "expose.install_provider",
+	"share.create", "share.stop", "share.list", "share.extend", "share.logs",
 	"map.create", "map.stop", "map.list", "map.requests",
 }
 
@@ -39,8 +38,24 @@ func TestEveryContractMethodIsDescribed(t *testing.T) {
 	}
 }
 
+// expose.* was renamed to share.* and its provider methods deleted before any
+// handler served them (docs/SHARE.md in sonar-relay, "The rename").
+func TestNoExposeMethods(t *testing.T) {
+	for _, m := range MethodNames() {
+		if strings.HasPrefix(m, "expose.") {
+			t.Errorf("method %q is described; expose.* was renamed to share.*", m)
+		}
+	}
+	doc := string(Marshal())
+	for _, gone := range []string{`"expose.`, "ProviderInfo", "ExposeInstallProvider", `"Tunnel"`, "ChangeTunnel"} {
+		if strings.Contains(doc, gone) {
+			t.Errorf("the generated schema still mentions %s", gone)
+		}
+	}
+}
+
 func TestStreamingMethodsDeclareChunkAndEnd(t *testing.T) {
-	for _, m := range []string{"ports.wait", "groups.start", "map.requests", "expose.install_provider"} {
+	for _, m := range []string{"ports.wait", "groups.start", "map.requests"} {
 		d, ok := Methods()[m]
 		if !ok {
 			t.Fatalf("method %q not described", m)
@@ -65,7 +80,7 @@ func TestBuildSchemaHasContractDefinitions(t *testing.T) {
 	if !ok {
 		t.Fatalf("schema has no definitions map")
 	}
-	for _, name := range []string{"Port", "Group", "Tunnel", "Proxy", "Session",
+	for _, name := range []string{"Port", "Group", "Share", "Proxy", "Session",
 		"Claim", "Snapshot", "Delta", "Event", "Error"} {
 		if _, ok := defs[name]; !ok {
 			t.Errorf("definition %q missing (contract §6)", name)
@@ -77,7 +92,7 @@ func TestBuildSchemaHasContractDefinitions(t *testing.T) {
 		t.Fatalf("Port definition has no properties")
 	}
 	for _, prop := range []string{"display_name", "ppid", "project_root", "group",
-		"group_source", "run", "stats", "exposed_urls", "proxy_id",
+		"group_source", "run", "stats", "shares", "exposed_urls", "proxy_id",
 		"proxy_target_port", "started_at", "session"} {
 		if _, ok := port[prop]; !ok {
 			t.Errorf("Port has no %q property", prop)

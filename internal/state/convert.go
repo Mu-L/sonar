@@ -29,8 +29,8 @@ func FromListening(lp ports.ListeningPort) Port {
 		IsApp:       lp.IsApp,
 		User:        lp.User,
 		ServiceUnit: strPtr(lp.ServiceUnit),
-		ExposedURLs: []string{},
-		StartedAt:   strPtr(lp.StartedAt),
+		ExposedURLs: []string{}, Shares: []Share{},
+		StartedAt: strPtr(lp.StartedAt),
 	}
 
 	if lp.GroupSource != "" {

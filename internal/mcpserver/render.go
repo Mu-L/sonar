@@ -108,8 +108,12 @@ func renderPort(p state.Port) string {
 	}
 	kv = appendIf(kv, "started_at", deref(p.StartedAt))
 	kv = appendIf(kv, "service_unit", deref(p.ServiceUnit))
-	if len(p.ExposedURLs) > 0 {
-		kv = appendIf(kv, "exposed_urls", strings.Join(p.ExposedURLs, ", "))
+	if len(p.Shares) > 0 {
+		urls := make([]string, 0, len(p.Shares))
+		for _, s := range p.Shares {
+			urls = append(urls, s.URL)
+		}
+		kv = appendIf(kv, "shares", strings.Join(urls, ", "))
 	}
 
 	width := 0

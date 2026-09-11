@@ -1,7 +1,7 @@
 package store_test
 
 // A sibling package filling in one of the reserved migration versions, exactly
-// as spec 3 will for tunnels (cross-spec contract §8): register from outside
+// as spec 3 will for shares (cross-spec contract §8): register from outside
 // internal/store, then open a store and find the table there.
 
 import (
@@ -16,7 +16,7 @@ func TestReservedMigrationFromAnotherPackage(t *testing.T) {
 	// twice — which is the last thing this test asserts. A second run in the
 	// same binary (`go test -count=2`) would therefore panic on the very first
 	// registration, so it stands aside once the slot is filled.
-	if store.LatestVersion() >= store.VersionTunnels {
+	if store.LatestVersion() >= store.VersionShares {
 		t.Skip("migration 003 is already registered in this process")
 	}
 
@@ -25,16 +25,16 @@ func TestReservedMigrationFromAnotherPackage(t *testing.T) {
 		t.Fatalf("LatestVersion = %d before registering, want at least %d", before, store.VersionIndexes)
 	}
 
-	store.RegisterMigration(store.VersionTunnels, "tunnels", `
-		CREATE TABLE tunnels (
+	store.RegisterMigration(store.VersionShares, "shares", `
+		CREATE TABLE shares (
 			id         TEXT PRIMARY KEY,
 			port       INTEGER NOT NULL,
 			url        TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);`)
 
-	if got := store.LatestVersion(); got != store.VersionTunnels {
-		t.Fatalf("LatestVersion = %d after registering 003, want %d", got, store.VersionTunnels)
+	if got := store.LatestVersion(); got != store.VersionShares {
+		t.Fatalf("LatestVersion = %d after registering 003, want %d", got, store.VersionShares)
 	}
 
 	s, err := store.Open(filepath.Join(t.TempDir(), "sonar.db"))
@@ -43,11 +43,11 @@ func TestReservedMigrationFromAnotherPackage(t *testing.T) {
 	}
 	defer func() { _ = s.Close() }()
 
-	if v, err := s.Version(); err != nil || v != store.VersionTunnels {
-		t.Fatalf("version = %d (%v), want %d", v, err, store.VersionTunnels)
+	if v, err := s.Version(); err != nil || v != store.VersionShares {
+		t.Fatalf("version = %d (%v), want %d", v, err, store.VersionShares)
 	}
 	if _, err := s.DB().Exec(
-		`INSERT INTO tunnels(id, port, url, created_at) VALUES('t1', 3000, 'https://x.example', '2026-01-01T00:00:00.000000000Z')`,
+		`INSERT INTO shares(id, port, url, created_at) VALUES('t1', 3000, 'https://x.example', '2026-01-01T00:00:00.000000000Z')`,
 	); err != nil {
 		t.Fatalf("writing to the externally registered table: %v", err)
 	}
@@ -59,6 +59,6 @@ func TestReservedMigrationFromAnotherPackage(t *testing.T) {
 				t.Error("a second registration of 003 did not panic")
 			}
 		}()
-		store.RegisterMigration(store.VersionTunnels, "tunnels-again", "CREATE TABLE nope(x);")
+		store.RegisterMigration(store.VersionShares, "shares-again", "CREATE TABLE nope(x);")
 	}()
 }

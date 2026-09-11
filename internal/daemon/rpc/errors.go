@@ -36,17 +36,16 @@ const (
 	CodeOutsideHome     = 1010
 	CodeConflict        = 1011
 
-	// 1100-1199 are owned by spec 3 (expose and proxies).
-	CodeTargetNotListening   = 1100
-	CodeProviderNotInstalled = 1101
-	CodeProviderUnavailable  = 1102
-	CodeProviderNotPermitted = 1103
-	CodeProviderAuthFailed   = 1104
-	CodeProviderCrashed      = 1105
-	CodeProviderTimeout      = 1106
-	CodeProviderLimitReached = 1107
-	CodeListenPortInUse      = 1108
-	CodeInstallDeclined      = 1109
+	// 1100-1199 are owned by spec 3 (shares and proxies). 1101-1106 and 1109
+	// belonged to the provider design (ngrok, cloudflared) and were deleted
+	// before anything returned them; they stay unused rather than reassigned.
+	CodeTargetNotListening = 1100
+	CodeShareLimitReached  = 1107
+	CodeListenPortInUse    = 1108
+	CodeNotSignedIn        = 1110
+	CodeShareExpired       = 1111
+	CodeRelayUnreachable   = 1112
+	CodeShareBlocked       = 1113
 
 	// 1200-1299 are owned by spec 2 (MCP, sessions and claims).
 	CodeSessionNotFound = 1200
@@ -68,16 +67,13 @@ var codeNames = map[int]string{
 	CodeOutsideHome:     "outside_home",
 	CodeConflict:        "conflict",
 
-	CodeTargetNotListening:   "target_not_listening",
-	CodeProviderNotInstalled: "provider_not_installed",
-	CodeProviderUnavailable:  "provider_unavailable",
-	CodeProviderNotPermitted: "provider_not_permitted",
-	CodeProviderAuthFailed:   "provider_auth_failed",
-	CodeProviderCrashed:      "provider_crashed",
-	CodeProviderTimeout:      "provider_timeout",
-	CodeProviderLimitReached: "provider_limit_reached",
-	CodeListenPortInUse:      "listen_port_in_use",
-	CodeInstallDeclined:      "install_declined",
+	CodeTargetNotListening: "target_not_listening",
+	CodeShareLimitReached:  "share_limit_reached",
+	CodeListenPortInUse:    "listen_port_in_use",
+	CodeNotSignedIn:        "not_signed_in",
+	CodeShareExpired:       "share_expired",
+	CodeRelayUnreachable:   "relay_unreachable",
+	CodeShareBlocked:       "share_blocked",
 
 	CodeSessionNotFound: "session_not_found",
 	CodeClaimConflict:   "claim_conflict",

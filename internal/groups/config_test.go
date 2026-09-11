@@ -131,12 +131,27 @@ func TestLoadValidationProblems(t *testing.T) {
 		{
 			name: "expose at the top level",
 			body: "name: p\nexpose:\n  - 3000\n",
-			want: "has an `expose:` key",
+			want: "has an `expose:` key: sharing is not configured in",
 		},
 		{
 			name: "expose on a service",
 			body: "name: p\nservices:\n  - name: api\n    expose: true\n",
-			want: "service api has an `expose:` key",
+			want: "service api has an `expose:` key: sharing is not configured in",
+		},
+		{
+			name: "share at the top level",
+			body: "name: p\nshare:\n  - 3000\n",
+			want: "has a `share:` key: sharing is not configured in",
+		},
+		{
+			name: "share on a service",
+			body: "name: p\nservices:\n  - name: api\n    share: public\n",
+			want: "service api has a `share:` key: sharing is not configured in",
+		},
+		{
+			name: "share on a later service",
+			body: "name: p\nservices:\n  - name: web\n  - name: api\n    share: lan\n",
+			want: "service api has a `share:` key",
 		},
 		{
 			name: "not yaml at all",

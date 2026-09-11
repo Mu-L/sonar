@@ -233,7 +233,7 @@ func parse(abs string, data []byte) (*Config, error) {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, &ConfigError{Path: abs, Problems: []string{err.Error()}}
 	}
-	if err := rejectExpose(&doc); err != nil {
+	if err := rejectShareKey(&doc); err != nil {
 		return nil, &ConfigError{Path: abs, Problems: []string{err.Error()}}
 	}
 
@@ -388,10 +388,15 @@ func (c *Config) findCycle() []string {
 	return nil
 }
 
-// rejectExpose fails a config that carries an `expose:` key. Expose is not part
-// of `.sonar.yaml`; saying so explicitly is friendlier than ignoring a key the
-// author expects to do something.
-func rejectExpose(doc *yaml.Node) error {
+// shareKeys are the keys a `.sonar.yaml` may not carry, at the top level or on
+// a service. `share:` is the verb; `expose:` is its old name, still refused so
+// a file written against the old docs gets the same answer.
+var shareKeys = []string{"share", "expose"}
+
+// rejectShareKey fails a config that carries a `share:` or an `expose:` key.
+// Sharing is not part of `.sonar.yaml`; saying so explicitly is friendlier
+// than ignoring a key the author expects to do something.
+func rejectShareKey(doc *yaml.Node) error {
 	root := doc
 	if root.Kind == yaml.DocumentNode {
 		if len(root.Content) == 0 {
@@ -402,8 +407,8 @@ func rejectExpose(doc *yaml.Node) error {
 	if root.Kind != yaml.MappingNode {
 		return nil
 	}
-	if hasKey(root, "expose") {
-		return exposeError("")
+	if key := firstShareKey(root); key != "" {
+		return shareKeyError(key, "")
 	}
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if root.Content[i].Value != "services" {
@@ -414,21 +419,37 @@ func rejectExpose(doc *yaml.Node) error {
 			continue
 		}
 		for _, item := range list.Content {
-			if item.Kind == yaml.MappingNode && hasKey(item, "expose") {
-				return exposeError(mappingName(item))
+			if item.Kind != yaml.MappingNode {
+				continue
+			}
+			if key := firstShareKey(item); key != "" {
+				return shareKeyError(key, mappingName(item))
 			}
 		}
 	}
 	return nil
 }
 
-func exposeError(service string) error {
+func firstShareKey(mapping *yaml.Node) string {
+	for _, k := range shareKeys {
+		if hasKey(mapping, k) {
+			return k
+		}
+	}
+	return ""
+}
+
+func shareKeyError(key, service string) error {
 	where := ConfigName
 	if service != "" {
 		where = "service " + service
 	}
-	return fmt.Errorf("%s has an `expose:` key: exposing a port is not configured in %s. "+
-		"Expose is created at runtime and is not part of this file", where, ConfigName)
+	article := "a"
+	if key == "expose" {
+		article = "an"
+	}
+	return fmt.Errorf("%s has %s `%s:` key: sharing is not configured in %s. "+
+		"A share is created at runtime with `sonar share`, not in this file", where, article, key, ConfigName)
 }
 
 func hasKey(mapping *yaml.Node, key string) bool {

@@ -393,7 +393,7 @@ func TestSnapshotAndStatus(t *testing.T) {
 	if len(snap.Ports) != 1 || snap.Ports[0].Port != 8123 {
 		t.Fatalf("snapshot ports = %+v, want one row on 8123", snap.Ports)
 	}
-	if snap.Groups == nil || snap.Tunnels == nil || snap.Proxies == nil || snap.Sessions == nil {
+	if snap.Groups == nil || snap.Shares == nil || snap.Proxies == nil || snap.Sessions == nil {
 		t.Error("a snapshot collection marshalled as null; contract §11.2 requires arrays")
 	}
 

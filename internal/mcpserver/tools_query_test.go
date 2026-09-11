@@ -159,7 +159,7 @@ func TestWaitForPortSeesAPortAppear(t *testing.T) {
 		Port: 4321, BindAddress: "127.0.0.1", IPVersion: "IPv4",
 		URL: "http://localhost:4321", PID: 5555, Process: "node",
 		DisplayName: "worker", Type: state.TypeUser, User: "dev",
-		ExposedURLs: []string{}, StartedAt: strPtr(fakedaemon.FixtureTime),
+		ExposedURLs: []string{}, Shares: []state.Share{}, StartedAt: strPtr(fakedaemon.FixtureTime),
 	}
 	time.Sleep(20 * time.Millisecond)
 	h.fake.SetPorts(append(fakedaemon.DefaultPorts(), appeared))

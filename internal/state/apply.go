@@ -5,10 +5,10 @@ package state
 // a new snapshot: the remote-host bridge (step 3A.2) subscribes once to each
 // remote daemon and keeps that host's rows up to date entirely from deltas.
 func Apply(s Snapshot, d Delta) Snapshot {
-	s.Seq, s.At, s.ExposuresActive = d.Seq, d.At, d.ExposuresActive
+	s.Seq, s.At, s.SharesActive = d.Seq, d.At, d.SharesActive
 	s.Ports = applyChange(s.Ports, d.Ports, Port.Key)
 	s.Groups = applyChange(s.Groups, d.Groups, Group.Key)
-	s.Tunnels = applyChange(s.Tunnels, d.Tunnels, Tunnel.Key)
+	s.Shares = applyChange(s.Shares, d.Shares, Share.Key)
 	s.Proxies = applyChange(s.Proxies, d.Proxies, Proxy.Key)
 	s.Sessions = applyChange(s.Sessions, d.Sessions, SessionRecord.Key)
 	s.Hosts = applyChange(s.Hosts, d.Hosts, Host.Key)
