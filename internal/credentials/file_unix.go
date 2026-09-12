@@ -46,6 +46,79 @@ func openPrivate(path string) (*os.File, error) {
 	return f, nil
 }
 
+// openDir opens a directory for inspection. O_DIRECTORY refuses anything that
+// is not one and O_NOFOLLOW refuses a symlink, so mode and owner are read from
+// the same object by descriptor rather than from a path that could be swapped
+// between the check and the use — the discipline openPrivate applies to the
+// file, applied to the directory holding it.
+func openDir(dir string) (*os.File, os.FileInfo, error) {
+	d, err := os.OpenFile(dir, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	fi, err := d.Stat()
+	if err != nil {
+		_ = d.Close()
+		return nil, nil, err
+	}
+	return d, fi, nil
+}
+
+// checkDirPrivate refuses a directory another user could write, or has
+// substituted wholesale.
+//
+// Only the immediate parent is checked. A loose grandparent lets someone
+// replace this directory entirely, but the replacement is then owned by them,
+// which the owner check catches; walking every ancestor to the root would
+// also have to reason about the sticky bit on /tmp-like directories, which is
+// a different problem from the one this store has.
+func checkDirPrivate(dir string) error {
+	d, fi, err := openDir(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	if perm := fi.Mode().Perm(); perm&0o022 != 0 {
+		return &InsecureFileError{Path: dir, Reason: fmt.Sprintf(
+			"the directory holding it has mode %04o, so others can replace the file inside it; it must not be group- or world-writable (chmod 700 %s)", perm, dir)}
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Getuid() {
+		return &InsecureFileError{Path: dir, Reason: fmt.Sprintf(
+			"the directory holding it is owned by uid %d, not by this user (%d)", st.Uid, os.Getuid())}
+	}
+	return nil
+}
+
+// secureDir makes the directory private before a token is written into it.
+//
+// It tightens rather than refuses. ~/.config/sonar is sonar's own directory —
+// its config, its log, its lock, its database — not somewhere a person
+// deliberately shares with other users, so a group-writable one is an
+// accident (a stray umask, a careless chmod, a restored backup) and quietly
+// fixing it is less surprising than refusing to sign in. Only the write bits
+// go: a 0755 directory stays 0755, because listing a directory does not
+// reveal the contents of a 0600 file in it. A directory belonging to someone
+// else is refused instead — chmod would fail there in any case.
+func secureDir(dir string) error {
+	d, fi, err := openDir(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Getuid() {
+		return &InsecureFileError{Path: dir, Reason: fmt.Sprintf(
+			"refusing to write a session into a directory owned by uid %d, not by this user (%d)", st.Uid, os.Getuid())}
+	}
+	perm := fi.Mode().Perm()
+	if perm&0o022 == 0 {
+		return nil
+	}
+	if err := d.Chmod(perm &^ 0o022); err != nil {
+		return fmt.Errorf("making %s private (its mode is %04o and others can write it): %w", dir, perm, err)
+	}
+	return nil
+}
+
 // syncDir makes a rename durable. Best effort: some filesystems refuse fsync
 // on a directory, and the rename itself has already happened.
 func syncDir(dir string) {

@@ -25,4 +25,11 @@ func openPrivate(path string) (*os.File, error) {
 	return os.Open(path)
 }
 
+// checkDirPrivate and secureDir are no-ops on Windows, for the same reason
+// openPrivate checks no mode there: Unix permission bits do not exist, the
+// directory sits under %USERPROFILE% whose ACL already admits only this user
+// and administrators, and the Credential Manager is the primary store anyway.
+func checkDirPrivate(string) error { return nil }
+func secureDir(string) error       { return nil }
+
 func syncDir(string) {}

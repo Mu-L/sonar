@@ -107,6 +107,122 @@ func TestALooseFileIsRefused(t *testing.T) {
 	}
 }
 
+// A perfectly good 0600 file is still not private when the directory holding
+// it can be written by someone else: they can rename it away and leave their
+// own in its place, and every check on the file itself would pass.
+func TestAFineFileInALooseDirectoryIsRefused(t *testing.T) {
+	for _, mode := range []os.FileMode{0o777, 0o775, 0o707, 0o702, 0o770} {
+		s, _ := newTestStore(t, nil)
+		mustSave(t, s, testSession(), InFile)
+		dir := filepath.Dir(s.Path())
+		if m := modeOf(t, s.Path()); m != 0o600 {
+			t.Fatalf("the file itself is %04o, so this would test the wrong thing", m)
+		}
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+
+		_, _, err := s.Load()
+		var insecure *InsecureFileError
+		if !errors.As(err, &insecure) || !errors.Is(err, ErrNotSignedIn) {
+			t.Fatalf("directory mode %04o: Load = %v; want an InsecureFileError that is not-signed-in", mode, err)
+		}
+		if insecure.Path != dir {
+			t.Fatalf("the error names %s, not the directory %s", insecure.Path, dir)
+		}
+		if !strings.Contains(err.Error(), "chmod 700") {
+			t.Fatalf("the error does not say how to fix it: %v", err)
+		}
+		if strings.Contains(err.Error(), testToken) {
+			t.Fatal("the refusal carries the token")
+		}
+
+		// Self-healing, as with a loose file: signing in again tightens the
+		// directory and the session is readable once more.
+		mustSave(t, s, testSession(), InFile)
+		if m := modeOf(t, dir); m&0o022 != 0 {
+			t.Fatalf("directory left at %04o after a save", m)
+		}
+		if _, _, err := s.Load(); err != nil {
+			t.Fatalf("Load after healing: %v", err)
+		}
+	}
+}
+
+// Others being able to list the directory is not exposure: the file in it is
+// 0600. Only write permission lets them swap it.
+func TestAReadableButUnwritableDirectoryIsFine(t *testing.T) {
+	s, _ := newTestStore(t, nil)
+	mustSave(t, s, testSession(), InFile)
+	dir := filepath.Dir(s.Path())
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Load(); err != nil {
+		t.Fatalf("Load from a 0755 directory = %v", err)
+	}
+	// And a save leaves that mode alone rather than surprising the user.
+	mustSave(t, s, testSession(), InFile)
+	if m := modeOf(t, dir); m != 0o755 {
+		t.Fatalf("save changed a 0755 directory to %04o", m)
+	}
+}
+
+func TestSavingIntoALooseDirectoryTightensItFirst(t *testing.T) {
+	s, _ := newTestStore(t, nil)
+	dir := filepath.Dir(s.Path())
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	mustSave(t, s, testSession(), InFile)
+
+	m := modeOf(t, dir)
+	if m&0o022 != 0 {
+		t.Fatalf("a token was written into a directory left at %04o", m)
+	}
+	if m != 0o755 {
+		t.Fatalf("mode %04o: only the write bits should have gone from 0777", m)
+	}
+	if _, _, err := s.Load(); err != nil {
+		t.Fatalf("Load = %v", err)
+	}
+}
+
+// The keychain still wins over a file that cannot be trusted — and when
+// neither store yields a session, the reason survives for doctor to show.
+func TestALooseDirectoryDoesNotHideAGoodKeychainSession(t *testing.T) {
+	kc := &fakeKeychain{}
+	s, clock := newTestStore(t, kc)
+	mustSave(t, s, testSession(), InKeychain)
+
+	// A file left by an earlier fallback, in a directory others can write.
+	*clock = clock.Add(time.Hour)
+	blob, _ := encode(Session{Token: "planted", SavedAt: *clock})
+	if err := s.file.save(blob); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(s.Path()), 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	got, loc, err := s.Load()
+	if err != nil || loc != InKeychain || got.Token.Reveal() != testToken {
+		t.Fatalf("Load = %s, %v; want the keychain's session", loc, err)
+	}
+
+	// With no keychain session, that same refusal is what doctor gets to show.
+	kc.secret = nil
+	_, _, err = s.Load()
+	var insecure *InsecureFileError
+	if !errors.As(err, &insecure) || !errors.Is(err, ErrNotSignedIn) {
+		t.Fatalf("Load = %v; want the directory's refusal preserved", err)
+	}
+}
+
 func TestASymlinkIsRefusedEvenToAPrivateFile(t *testing.T) {
 	dir := t.TempDir()
 	real := fileBackend{path: filepath.Join(dir, "elsewhere.json")}

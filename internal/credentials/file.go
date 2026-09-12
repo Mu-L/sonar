@@ -41,6 +41,16 @@ func (f fileBackend) load() (Session, bool, error) {
 	}
 	defer file.Close()
 
+	// A 0600 file in a directory others can write is not private: they cannot
+	// read it, but they can rename it away and leave one of their own in its
+	// place — which passes every check on the descriptor above, because what
+	// they planted really is a regular 0600 file of their own. Checked only
+	// once the file exists: an empty directory holds no credential to protect,
+	// and the next save tightens it anyway.
+	if err := checkDirPrivate(filepath.Dir(f.path)); err != nil {
+		return Session{}, false, err
+	}
+
 	data, err := io.ReadAll(io.LimitReader(file, maxFileBytes+1))
 	if err != nil {
 		return Session{}, false, fmt.Errorf("reading %s: %w", f.path, err)
@@ -62,10 +72,14 @@ func (f fileBackend) load() (Session, bool, error) {
 // permissions.
 func (f fileBackend) save(blob []byte) error {
 	dir := filepath.Dir(f.path)
-	// 0700 only when the directory has to be created; an existing
-	// ~/.config/sonar keeps its mode, and the file's own 0600 is what counts.
+	// MkdirAll sets a mode only on a directory it creates, so an existing
+	// ~/.config/sonar keeps whatever it already has — including group- or
+	// world-writable, which is the one mode a token must not be written into.
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("creating %s: %w", dir, err)
+	}
+	if err := secureDir(dir); err != nil {
+		return err
 	}
 	tmp, err := os.CreateTemp(dir, ".credentials-*.json")
 	if err != nil {
