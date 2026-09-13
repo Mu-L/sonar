@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
+	github.com/coder/websocket v1.8.15
+	github.com/hashicorp/yamux v0.1.2
 	github.com/invopop/jsonschema v0.14.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
