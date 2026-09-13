@@ -19,6 +19,8 @@ func TestFramesMatchTheSharedFixture(t *testing.T) {
 	frames := []Frame{
 		{Type: FrameHello, Version: ProtocolVersion, Client: "sonar/v0.7.0"},
 		{Type: FrameWelcome, Version: ProtocolVersion, URL: "https://share.trysonar.dev"},
+		{Type: FrameStatus, State: ServiceDegraded},
+		{Type: FrameStatus, State: ServiceLive},
 		{Type: FrameGoingAway, Reason: GoingAwayShutdown, RetryAfterMS: 2000},
 		{Type: FrameGoingAway, Reason: GoingAwayReplaced},
 		{Type: FrameError, Reason: ErrReasonUnsupportedVersion,

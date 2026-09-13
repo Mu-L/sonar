@@ -40,6 +40,9 @@ type relaySession struct {
 	hello Frame
 	mu    sync.Mutex
 	enc   *json.Encoder
+	// frames carries what the daemon reports after the handshake, which in
+	// phase 1 is the state of the app it is sharing.
+	frames chan Frame
 }
 
 func newFakeRelay(t *testing.T) *fakeRelay {
@@ -67,8 +70,11 @@ func newFakeRelay(t *testing.T) *fakeRelay {
 		if err != nil {
 			return
 		}
+		// One decoder for the life of the stream: a second one could swallow
+		// frames the first had already buffered.
+		dec := json.NewDecoder(ctrl)
 		var hello Frame
-		if err := json.NewDecoder(ctrl).Decode(&hello); err != nil {
+		if err := dec.Decode(&hello); err != nil {
 			return
 		}
 		enc := json.NewEncoder(ctrl)
@@ -86,8 +92,22 @@ func newFakeRelay(t *testing.T) *fakeRelay {
 			Type: FrameWelcome, Version: ProtocolVersion, URL: "https://share.test"}); err != nil {
 			return
 		}
+		rs := &relaySession{sess: sess, hello: hello, enc: enc, frames: make(chan Frame, 32)}
+		go func() {
+			for {
+				var f Frame
+				if err := dec.Decode(&f); err != nil {
+					close(rs.frames)
+					return
+				}
+				select {
+				case rs.frames <- f:
+				default: // a test that is not reading must not block the stream
+				}
+			}
+		}()
 		select {
-		case fr.sessions <- &relaySession{sess: sess, hello: hello, enc: enc}:
+		case fr.sessions <- rs:
 		default:
 		}
 		<-sess.CloseChan()

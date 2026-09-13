@@ -1,5 +1,7 @@
 {"type":"hello","version":1,"client":"sonar/v0.7.0"}
 {"type":"welcome","version":1,"url":"https://share.trysonar.dev"}
+{"type":"status","state":"degraded"}
+{"type":"status","state":"live"}
 {"type":"going_away","reason":"shutdown","retry_after_ms":2000}
 {"type":"going_away","reason":"replaced"}
 {"type":"error","reason":"unsupported_version","message":"this relay speaks tunnel protocol 1"}

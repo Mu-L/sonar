@@ -31,6 +31,19 @@ const (
 	FrameGoingAway = "going_away"
 	// FrameError refuses a hello; the relay closes the connection after it.
 	FrameError = "error"
+	// FrameStatus tells the relay whether the shared service is still
+	// answering on this machine. Daemon to relay, at every change.
+	FrameStatus = "status"
+)
+
+// Service states, carried by a status frame.
+//
+// This is the state of the app being shared, not of the tunnel: the tunnel is
+// up in both cases. A relay that is told "degraded" answers visitors itself
+// instead of opening a stream to a port that is not listening.
+const (
+	ServiceLive     = "live"
+	ServiceDegraded = "degraded"
 )
 
 // going_away reasons.
@@ -53,6 +66,8 @@ const (
 // per line. Fields a frame type does not use are omitted from the wire.
 type Frame struct {
 	Type string `json:"type"`
+	// State is the shared service's state, on status: live or degraded.
+	State string `json:"state,omitempty"`
 	// Version is the protocol version, on hello and welcome.
 	Version int `json:"version,omitempty"`
 	// Client is what the daemon calls itself, on hello.

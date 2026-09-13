@@ -27,7 +27,10 @@ type State string
 const (
 	StateConnecting State = "connecting"
 	StateConnected  State = "connected"
-	StateStopped    State = "stopped"
+	// StateDegraded is the tunnel up and the shared app not listening. It is a
+	// waiting room, not a failure: restarting a dev server passes through it.
+	StateDegraded State = "degraded"
+	StateStopped  State = "stopped"
 )
 
 // Status is one state change, for whatever is showing the share to a person.
@@ -50,6 +53,10 @@ var (
 	ErrReplaced = errors.New("tunnel: another daemon took this share")
 	// ErrUnsupportedVersion: the relay speaks a protocol this build does not.
 	ErrUnsupportedVersion = errors.New("tunnel: the relay speaks a different tunnel protocol")
+	// ErrServiceGone: the shared port stopped listening and stayed that way
+	// for the whole grace window. The share is over, and it does not resume on
+	// its own however quickly the port comes back — see watchService.
+	ErrServiceGone = errors.New("tunnel: the shared service stopped")
 )
 
 // Config is one share: where the relay is, what to prove, and what to serve.
@@ -81,6 +88,11 @@ type Config struct {
 	// Linger is how long a connection that said going_away keeps serving what
 	// it already has. Zero means 30s.
 	Linger time.Duration
+	// WatchInterval is how often the shared port is checked. Zero means 2s.
+	WatchInterval time.Duration
+	// ServiceGrace is how long the shared port may stay dead before the share
+	// ends for good. Zero means 90s.
+	ServiceGrace time.Duration
 	// HTTPClient performs the WebSocket handshake. Zero means the default.
 	HTTPClient *http.Client
 }
@@ -91,6 +103,10 @@ const (
 	defaultHandshakeTimeout = 15 * time.Second
 	defaultDialTimeout      = 5 * time.Second
 	defaultLinger           = 30 * time.Second
+	defaultWatchInterval    = 2 * time.Second
+	// defaultServiceGrace is how long a restart may take before the share is
+	// over: about 45 checks at the default interval.
+	defaultServiceGrace = 90 * time.Second
 	// stableAfter is how long a connection must last before the next failure
 	// starts counting from zero again. Without it, a relay that accepts and
 	// immediately drops would be retried as fast as it can accept.
@@ -152,6 +168,12 @@ func newClient(cfg Config) (*client, error) {
 	}
 	if cfg.Linger <= 0 {
 		cfg.Linger = defaultLinger
+	}
+	if cfg.WatchInterval <= 0 {
+		cfg.WatchInterval = defaultWatchInterval
+	}
+	if cfg.ServiceGrace <= 0 {
+		cfg.ServiceGrace = defaultServiceGrace
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -225,6 +247,15 @@ func (c *client) run(ctx context.Context) error {
 			c.status(Status{State: StateStopped})
 			return nil
 		}
+		if errors.Is(err, ErrServiceGone) {
+			// Terminal on purpose. A port is not an identity: whatever binds it
+			// next may be a different project, and resuming would hand that
+			// project a URL someone already shared.
+			c.log.Info("the shared service stopped; the share has ended",
+				"addr", c.local, "grace", c.cfg.ServiceGrace)
+			c.status(Status{State: StateStopped, Err: err})
+			return err
+		}
 
 		var wait time.Duration
 		switch {
@@ -260,6 +291,16 @@ func (c *client) run(ctx context.Context) error {
 // serve runs one connection, forwarding requests until it ends. It returns the
 // going_away reason when there was one.
 func (c *client) serve(ctx context.Context, cn *conn) (string, time.Duration, error) {
+	// The service watcher lives exactly as long as this connection does.
+	wctx, stopWatch := context.WithCancel(ctx)
+	defer stopWatch()
+	gone := make(chan struct{}, 1)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.watchService(wctx, cn, gone)
+	}()
+
 	go func() {
 		for {
 			stream, err := cn.sess.AcceptStream()
@@ -291,6 +332,11 @@ func (c *client) serve(ctx context.Context, cn *conn) (string, time.Duration, er
 		case <-ctx.Done():
 			cn.close()
 			return "", 0, ctx.Err()
+		case <-gone:
+			// The shared service was gone for the whole window. This share is
+			// over: close the control connection and do not come back.
+			cn.close()
+			return "", 0, ErrServiceGone
 		case <-cn.sess.CloseChan():
 			cn.close()
 			return "", 0, errors.New("the control connection dropped")
@@ -332,9 +378,19 @@ func (c *client) linger(ctx context.Context, cn *conn) {
 type conn struct {
 	sess   *yamux.Session
 	dec    *json.Decoder
+	enc    *json.Encoder
+	sendMu sync.Mutex
 	url    string
 	cancel context.CancelFunc
 	once   sync.Once
+}
+
+// send writes one frame to the relay. Frames are small and rare; one lock
+// keeps the handshake and the service watcher from interleaving lines.
+func (cn *conn) send(f Frame) error {
+	cn.sendMu.Lock()
+	defer cn.sendMu.Unlock()
+	return cn.enc.Encode(f)
 }
 
 func (cn *conn) close() {
@@ -376,7 +432,8 @@ func (c *client) connect(ctx context.Context) (*conn, error) {
 		return nil, fmt.Errorf("opening the control stream: %w", err)
 	}
 	_ = ctrl.SetDeadline(time.Now().Add(c.cfg.HandshakeTimeout))
-	if err := json.NewEncoder(ctrl).Encode(Frame{
+	cn.enc = json.NewEncoder(ctrl)
+	if err := cn.send(Frame{
 		Type: FrameHello, Version: ProtocolVersion, Client: c.cfg.Client}); err != nil {
 		cn.close()
 		return nil, fmt.Errorf("sending hello: %w", err)
@@ -415,7 +472,8 @@ func (c *client) status(s Status) {
 func terminal(err error) bool {
 	return errors.Is(err, ErrUnauthorized) ||
 		errors.Is(err, ErrUnsupportedVersion) ||
-		errors.Is(err, ErrReplaced)
+		errors.Is(err, ErrReplaced) ||
+		errors.Is(err, ErrServiceGone)
 }
 
 // backoff doubles from MinBackoff to MaxBackoff.
