@@ -229,6 +229,9 @@ func (c *client) run(ctx context.Context) error {
 		var wait time.Duration
 		switch {
 		case reason == GoingAwayReplaced:
+			// Nothing to linger for: this daemon is stopping, and the relay is
+			// already serving the share from the connection that replaced it.
+			cn.close()
 			c.status(Status{State: StateStopped, Err: ErrReplaced})
 			return ErrReplaced
 		case reason != "":
