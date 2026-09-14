@@ -1245,6 +1245,9 @@
         "name": {
           "type": "string"
         },
+        "config_path": {
+          "type": "string"
+        },
         "force": {
           "type": "boolean"
         },
@@ -1252,6 +1255,9 @@
           "type": "integer"
         },
         "dry_run": {
+          "type": "boolean"
+        },
+        "release": {
           "type": "boolean"
         }
       },
@@ -1346,6 +1352,12 @@
         "log_path": {
           "type": "string"
         },
+        "run_id": {
+          "type": "string"
+        },
+        "log_offset": {
+          "type": "integer"
+        },
         "skipped": {
           "type": "boolean"
         },
@@ -1430,6 +1442,9 @@
           "type": "array"
         },
         "subscription_id": {
+          "type": "string"
+        },
+        "start_id": {
           "type": "string"
         }
       },
@@ -1699,6 +1714,9 @@
             "$ref": "#/definitions/KillResult"
           },
           "type": "array"
+        },
+        "released": {
+          "type": "integer"
         }
       },
       "type": "object",
@@ -2949,8 +2967,38 @@
         "port_hint": {
           "type": "integer"
         },
+        "url": {
+          "type": "string"
+        },
         "status": {
           "type": "string"
+        },
+        "config_path": {
+          "type": "string"
+        },
+        "start_id": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "log_path": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "exited_at": {
+          "type": "string"
+        },
+        "last_lines": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object",
@@ -2973,11 +3021,18 @@
             "$ref": "#/definitions/RunRecord"
           },
           "type": "array"
+        },
+        "exited": {
+          "items": {
+            "$ref": "#/definitions/RunRecord"
+          },
+          "type": "array"
         }
       },
       "type": "object",
       "required": [
-        "runs"
+        "runs",
+        "exited"
       ]
     },
     "RunsRegisterParams": {
@@ -3120,6 +3175,12 @@
         },
         "pid": {
           "type": "integer"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "stopped": {
+          "type": "boolean"
         }
       },
       "type": "object",
@@ -3235,6 +3296,16 @@
               "type": "null"
             }
           ]
+        },
+        "last_exit": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/ServiceExit"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "type": "object",
@@ -3250,7 +3321,8 @@
         "color",
         "depends_on",
         "running",
-        "port_actual"
+        "port_actual",
+        "last_exit"
       ]
     },
     "ServiceAdd": {
@@ -3304,6 +3376,34 @@
       "required": [
         "name",
         "patch"
+      ]
+    },
+    "ServiceExit": {
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "exited",
+            "crashed",
+            "stopped"
+          ]
+        },
+        "at": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "code",
+        "reason",
+        "at",
+        "run_id"
       ]
     },
     "ServicePatch": {

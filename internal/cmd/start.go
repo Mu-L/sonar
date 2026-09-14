@@ -46,10 +46,15 @@ var (
 const registerTimeout = 5 * time.Second
 
 var startCmd = &cobra.Command{
-	Use:   "start [--group <name>] [--name <name>] [--port <port>] [--detach] -- <command> [args...]",
-	Short: "Start a command as a named service in a group",
-	Long: "Start <command> and record it so sonar can attribute every port it (or\n" +
-		"anything it spawns) opens to a group and a service name.\n\n" +
+	Use:   "start [-d] [<dir>] [<service>...] | start [flags] -- <command> [args...]",
+	Short: "Start a project from its sonar.yaml, or one command as a named service",
+	Long: "With no command, start the project described by the nearest sonar.yaml —\n" +
+		"or the one in or above <dir> — in depends_on order. Name services to\n" +
+		"start only those. In the foreground sonar follows their logs with the\n" +
+		"service name in front of every line, and Ctrl+C stops the services it\n" +
+		"started. -d starts them in the background instead, like `sonar up`.\n\n" +
+		"After --, start <command> and record it so sonar can attribute every\n" +
+		"port it (or anything it spawns) opens to a group and a service name.\n\n" +
 		"The group is --group, else the nearest sonar.yaml, else the git\n" +
 		"checkout the command runs in, else the directory name. The name is\n" +
 		"--name, else the matching sonar.yaml service, else inferred from the\n" +
@@ -67,9 +72,9 @@ func init() {
 	startCmd.Flags().StringVar(&startGroup, "group", "", "Group to attribute this run to (default: sonar.yaml, git root, or directory name)")
 	startCmd.Flags().StringVar(&startName, "name", "", "Service name for this run (default: inferred from the command)")
 	startCmd.Flags().IntVar(&startPort, "port", 0, "Port this command is expected to bind; the run shows as starting until it does")
-	startCmd.Flags().BoolVar(&startDetach, "detach", false, "Run in the background, logging to ~/.config/sonar/logs/<group>/<name>.log")
+	startCmd.Flags().BoolVarP(&startDetach, "detach", "d", false, "Run in the background, logging to ~/.config/sonar/logs/<group>/")
 	startCmd.Flags().BoolVar(&startList, "list", false, "List the runs sonar started and exit")
-	startCmd.Flags().BoolVar(&startJSON, "json", false, "Output as JSON (with --list)")
+	startCmd.Flags().BoolVar(&startJSON, "json", false, "Output as JSON (with --list, or with -d for a project)")
 	rootCmd.AddCommand(startCmd)
 }
 
@@ -77,16 +82,18 @@ func startRun(cmd *cobra.Command, args []string) error {
 	if startList {
 		return listRuns(cmd.Context())
 	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolving the working directory: %w", err)
+	}
+	if handled, err := startProjectIfAsked(cmd, cwd, args); handled {
+		return err
+	}
 	if len(args) == 0 {
 		return errors.New("no command given; usage: sonar start [flags] -- <command> [args...]")
 	}
 	if startPort < 0 || startPort > 65535 {
 		return fmt.Errorf("--port %d is not a port number", startPort)
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("resolving the working directory: %w", err)
 	}
 	res := spawn.Resolve(cwd, args, startGroup, startName)
 	// The agent session is detected here, in the process the agent actually
@@ -132,10 +139,12 @@ func startAttached(cmd *cobra.Command, argv []string, cwd string, res spawn.Reso
 	if err != nil {
 		return fmt.Errorf("running %q: %w", argv[0], err)
 	}
+	// The daemon keeps how it ended, and knows a Ctrl+C we forwarded is not a
+	// crash however the child chose to exit.
+	finishRun(h.PID, daemonKnows, code, fwd.Interrupted())
 	if code != 0 {
 		// Mirror the child's exit code without cobra printing usage over it.
 		cmd.SilenceUsage, cmd.SilenceErrors = true, true
-		unregisterRun(h.PID, daemonKnows)
 		fwd.Stop()
 		os.Exit(code)
 	}
@@ -273,6 +282,25 @@ func unregisterRun(pid int, daemonKnows bool) {
 	_ = runs.Remove(pid)
 }
 
+// finishRun reports how an attached run ended, so the daemon keeps it among
+// the runs that exited. Without a daemon there is nowhere to keep it and the
+// runs.json entry is simply removed.
+func finishRun(pid int, daemonKnows bool, code int, stopped bool) {
+	if daemonKnows {
+		ctx, cancel := context.WithTimeout(context.Background(), registerTimeout)
+		defer cancel()
+		if c, err := connectRunningDaemon(ctx); err == nil {
+			defer c.Close()
+			var out rpc.OKResult
+			params := rpc.RunsUnregisterParams{PID: pid, ExitCode: &code, Stopped: stopped}
+			if err := c.Call(ctx, "runs.unregister", params, &out); err == nil {
+				return
+			}
+		}
+	}
+	_ = runs.Remove(pid)
+}
+
 // fallbackEntry is the runs.json row for a run the daemon never saw. Tag holds
 // the group so an older `sonar list` still attributes the ports.
 func fallbackEntry(h *spawn.Handle) runs.Entry {
@@ -316,23 +344,29 @@ func listRuns(ctx context.Context) error {
 		return rows[i].Group < rows[j].Group
 	})
 
+	exited := recentExits(ctx)
 	if startJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]any{"runs": rows})
+		return enc.Encode(map[string]any{"runs": rows, "exited": exited})
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && len(exited) == 0 {
 		fmt.Println("No runs started by sonar.")
 		return nil
 	}
 
-	fmt.Printf("%-6s %-10s %-18s %-14s %-9s %-12s %s\n",
-		display.Bold("PID"), display.Bold("ID"), display.Bold("GROUP"),
-		display.Bold("NAME"), display.Bold("STATUS"), display.Bold("PORTS"), display.Bold("CMD"))
-	for _, r := range rows {
-		fmt.Printf("%-6d %-10s %-18s %-14s %-9s %-12s %s\n",
-			r.PID, r.ID, display.Cyan(r.Group), r.Name, r.Status, portList(r.Ports), r.Cmd)
+	if len(rows) == 0 {
+		fmt.Println("Nothing sonar started is running.")
+	} else {
+		fmt.Printf("%-6s %-10s %-18s %-14s %-9s %-12s %s\n",
+			display.Bold("PID"), display.Bold("ID"), display.Bold("GROUP"),
+			display.Bold("NAME"), display.Bold("STATUS"), display.Bold("PORTS"), display.Bold("CMD"))
+		for _, r := range rows {
+			fmt.Printf("%-6d %-10s %-18s %-14s %-9s %-12s %s\n",
+				r.PID, r.ID, display.Cyan(r.Group), r.Name, r.Status, portList(r.Ports), r.Cmd)
+		}
 	}
+	printExits(exited)
 	return nil
 }
 

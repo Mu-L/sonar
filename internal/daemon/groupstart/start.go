@@ -75,9 +75,15 @@ func handleGroupsStart(ctx context.Context, req *daemon.Request) (any, error) {
 	}
 
 	rt := req.Runtime
-	initial := rpc.GroupsStartResult{MutationResult: rpc.MutationResult{OK: true, Affected: []string{}}}
+	// One id for everything this call starts, so a client can tell the
+	// services it brought up from the ones that were already running.
+	meta := runsreg.Meta{ConfigPath: cfg.Path, StartID: spawn.NewID(), Origin: runsreg.Origin(req)}
+	initial := rpc.GroupsStartResult{
+		MutationResult: rpc.MutationResult{OK: true, Affected: []string{}},
+		StartID:        meta.StartID,
+	}
 	return daemon.StartStream(ctx, req, initial, func(ctx context.Context, s *daemon.Stream) (any, error) {
-		return run(ctx, rt, s, cfg, group, plan, p), nil
+		return run(ctx, rt, s, cfg, group, plan, p, meta), nil
 	})
 }
 
@@ -85,7 +91,8 @@ func handleGroupsStart(ctx context.Context, req *daemon.Request) (any, error) {
 // A service that fails never stops the ones after it: the caller asked for the
 // group, and a partial group is more useful than none.
 func run(ctx context.Context, rt *daemon.Runtime, s *daemon.Stream,
-	cfg *groups.Config, group string, plan []groups.Step, p rpc.GroupsStartParams) rpc.GroupsStartEnd {
+	cfg *groups.Config, group string, plan []groups.Step, p rpc.GroupsStartParams,
+	meta runsreg.Meta) rpc.GroupsStartEnd {
 
 	end := rpc.GroupsStartEnd{Started: []string{}, Skipped: []string{}, Errors: []string{}}
 	book := newAddressBook(rt, cfg, group)
@@ -111,14 +118,17 @@ func run(ctx context.Context, rt *daemon.Runtime, s *daemon.Stream,
 			continue
 		}
 
-		h, err := start(ctx, rt, cfg, group, svc, book, p)
+		h, err := start(ctx, rt, cfg, group, svc, book, p, meta)
 		if err != nil {
 			rt.Logger.Warn("starting a service", "group", group, "service", svc.Name, "error", err)
 			_ = s.Send(rpc.GroupsStartChunk{Service: svc.Name, Error: detail(err)})
 			end.Errors = append(end.Errors, svc.Name)
 			continue
 		}
-		_ = s.Send(rpc.GroupsStartChunk{Service: svc.Name, PID: h.PID, Port: h.PortHint, LogPath: h.LogPath})
+		_ = s.Send(rpc.GroupsStartChunk{
+			Service: svc.Name, PID: h.PID, Port: h.PortHint, RunID: h.ID,
+			LogPath: h.LogPath, LogOffset: h.LogOffset,
+		})
 		end.Started = append(end.Started, svc.Name)
 	}
 	return end
@@ -128,7 +138,8 @@ func run(ctx context.Context, rt *daemon.Runtime, s *daemon.Stream,
 // attributed to this group and this service name. Its references are expanded
 // and its environment built here, once every port it names is known.
 func start(ctx context.Context, rt *daemon.Runtime, cfg *groups.Config, group string,
-	svc groups.Service, book *addressBook, p rpc.GroupsStartParams) (*spawn.Handle, error) {
+	svc groups.Service, book *addressBook, p rpc.GroupsStartParams,
+	meta runsreg.Meta) (*spawn.Handle, error) {
 
 	argv := spawn.SplitCmd(svc.Cmd)
 	if len(argv) == 0 {
@@ -156,7 +167,7 @@ func start(ctx context.Context, rt *daemon.Runtime, cfg *groups.Config, group st
 		Name:     svc.Name,
 		PortHint: port,
 		LogPath:  spawn.LogPath(group, svc.Name),
-	})
+	}, meta)
 }
 
 // serviceEnv is the environment a service starts in, each layer winning over
