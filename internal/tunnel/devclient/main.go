@@ -30,6 +30,10 @@ func main() {
 	port := flag.Int("port", 0, "The local port to share (required)")
 	host := flag.String("local-host", "localhost", "The host the local app is on")
 	debug := flag.Bool("v", false, "Log every forwarded request")
+	grace := flag.Duration("grace", 0,
+		"How long the shared port may stay dead before the share ends (0 = the default 90s)")
+	watch := flag.Duration("watch", 0,
+		"How often to check the shared port (0 = the default 2s)")
 	flag.Parse()
 
 	if *port == 0 {
@@ -52,12 +56,14 @@ func main() {
 	defer stop()
 
 	err := tunnel.Run(ctx, tunnel.Config{
-		RelayURL:  *relay,
-		Key:       key,
-		LocalPort: *port,
-		LocalHost: *host,
-		Client:    "sonar-devclient",
-		Logger:    log,
+		RelayURL:      *relay,
+		Key:           key,
+		LocalPort:     *port,
+		LocalHost:     *host,
+		Client:        "sonar-devclient",
+		Logger:        log,
+		ServiceGrace:  *grace,
+		WatchInterval: *watch,
 		OnStatus: func(s tunnel.Status) {
 			switch s.State {
 			case tunnel.StateConnected:
@@ -68,6 +74,8 @@ func main() {
 				} else {
 					fmt.Println("connecting…")
 				}
+			case tunnel.StateDegraded:
+				fmt.Println("degraded: the shared port is not answering")
 			case tunnel.StateStopped:
 				fmt.Println("stopped")
 			}

@@ -183,3 +183,34 @@ func TestDoesNotResumeAfterTheShareHasStopped(t *testing.T) {
 	case <-time.After(time.Second):
 	}
 }
+
+// The relay keeps its own clock on a degraded share, and it can be the one to
+// end it — when this daemon's watcher is wedged, or its machine stopped
+// looking. That is terminal here too: the client does not reconnect and hand
+// the same public URL back to whatever is on that port now.
+func TestTheRelayEndingTheShareStopsTheClient(t *testing.T) {
+	fr := newFakeRelay(t)
+	app := newFlappyApp(t)
+	// A window long enough that this client's own timer never fires: the relay
+	// is what ends this share.
+	run := runClient(t, fr, Config{LocalPort: app.port,
+		WatchInterval: 20 * time.Millisecond, ServiceGrace: time.Hour})
+	run.waitState(t, StateConnected)
+	rs := fr.wait(t)
+
+	app.stop()
+	if f := rs.waitFrame(t, FrameStatus); f.State != ServiceDegraded {
+		t.Fatalf("the daemon reported %q, want %s", f.State, ServiceDegraded)
+	}
+
+	rs.send(t, Frame{Type: FrameGoingAway, Reason: GoingAwayServiceGone})
+
+	if err := run.waitDone(t); !errors.Is(err, ErrServiceGone) {
+		t.Fatalf("Run returned %v, want ErrServiceGone", err)
+	}
+	select {
+	case <-fr.sessions:
+		t.Error("the client reconnected after the relay had ended the share")
+	case <-time.After(500 * time.Millisecond):
+	}
+}

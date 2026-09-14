@@ -259,6 +259,15 @@ func (c *client) run(ctx context.Context) error {
 
 		var wait time.Duration
 		switch {
+		case reason == GoingAwayServiceGone:
+			// The relay's own clock ran out on a share whose service never
+			// came back. It means what our own window means, and it is
+			// terminal for the same reason: nothing resumes without a person.
+			cn.close()
+			c.log.Info("the relay ended the share; its service never came back",
+				"addr", c.local)
+			c.status(Status{State: StateStopped, Err: ErrServiceGone})
+			return ErrServiceGone
 		case reason == GoingAwayReplaced:
 			// Nothing to linger for: this daemon is stopping, and the relay is
 			// already serving the share from the connection that replaced it.

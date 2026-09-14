@@ -54,6 +54,9 @@ const (
 	// GoingAwayReplaced: another daemon took this share. Do not reconnect, or
 	// the two take it from each other forever.
 	GoingAwayReplaced = "replaced"
+	// GoingAwayServiceGone: the relay gave up on a share that stayed degraded
+	// past its own cap. Terminal here too — see ErrServiceGone.
+	GoingAwayServiceGone = "service_gone"
 )
 
 // error reasons.

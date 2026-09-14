@@ -4,4 +4,5 @@
 {"type":"status","state":"live"}
 {"type":"going_away","reason":"shutdown","retry_after_ms":2000}
 {"type":"going_away","reason":"replaced"}
+{"type":"going_away","reason":"service_gone"}
 {"type":"error","reason":"unsupported_version","message":"this relay speaks tunnel protocol 1"}

@@ -23,6 +23,7 @@ func TestFramesMatchTheSharedFixture(t *testing.T) {
 		{Type: FrameStatus, State: ServiceLive},
 		{Type: FrameGoingAway, Reason: GoingAwayShutdown, RetryAfterMS: 2000},
 		{Type: FrameGoingAway, Reason: GoingAwayReplaced},
+		{Type: FrameGoingAway, Reason: GoingAwayServiceGone},
 		{Type: FrameError, Reason: ErrReasonUnsupportedVersion,
 			Message: "this relay speaks tunnel protocol 1"},
 	}
