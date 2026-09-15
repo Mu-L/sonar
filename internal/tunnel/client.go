@@ -65,8 +65,19 @@ type Config struct {
 	// control route itself ("wss://relay.trysonar.dev/v1/tunnel").
 	RelayURL string
 	// Key authorises the control route. It comes from the environment or the
-	// keychain, never from a command line, where ps would read it.
+	// keychain, never from a command line, where ps would read it. It is the
+	// account session for a share with a slug, and the operator's tunnel key
+	// for the single-hostname connection that predates slugs.
 	Key string
+	// Share is the slug this connection attaches to, as `?share=<slug>` on the
+	// control route. Empty is the legacy single-hostname connection, which
+	// only a tunnel key may hold.
+	//
+	// It is a query parameter rather than a field on the hello frame because
+	// the control frames are pinned byte for byte against a fixture checked in
+	// to this repository and to sonar-relay; the relay made the same choice
+	// for the same reason (sonar-relay/docs/SHARE.md, "The wire surface").
+	Share string
 	// LocalPort is the port on this machine being shared.
 	LocalPort int
 	// LocalHost is what to dial it on. Empty means "localhost", which covers
@@ -95,6 +106,27 @@ type Config struct {
 	ServiceGrace time.Duration
 	// HTTPClient performs the WebSocket handshake. Zero means the default.
 	HTTPClient *http.Client
+	// OnRequest, when set, is called once per forwarded exchange, from that
+	// exchange's goroutine: it must not block. It is what `share.logs` tails.
+	// Nothing about a request's content is offered — no headers, no bodies —
+	// because the daemon has no business keeping those and a log that held
+	// them would be the wrong thing to have on the machine being shared.
+	OnRequest func(RequestLog)
+}
+
+// RequestLog is one forwarded exchange, as the daemon saw it.
+type RequestLog struct {
+	At       time.Time
+	Method   string
+	Path     string
+	Upgrade  bool
+	BytesOut int64
+	Duration time.Duration
+	// Err is why the exchange did not reach the app, when it did not. An
+	// exchange that reached the app has no error here even if the app answered
+	// a 500: the daemon splices bytes and never parses the response, so the
+	// status is the relay's to log and not this side's.
+	Err error
 }
 
 const (
@@ -146,6 +178,9 @@ func newClient(cfg Config) (*client, error) {
 	}
 	u, err := ControlURL(cfg.RelayURL)
 	if err != nil {
+		return nil, err
+	}
+	if u, err = withShare(u, cfg.Share); err != nil {
 		return nil, err
 	}
 	if cfg.LocalHost == "" {
@@ -211,6 +246,22 @@ func ControlURL(raw string) (string, error) {
 	if u.Path == "" || u.Path == "/" {
 		u.Path = Path
 	}
+	return u.String(), nil
+}
+
+// withShare names the slug on a control URL. A relay URL that already carries
+// other parameters keeps them.
+func withShare(raw, slug string) (string, error) {
+	if strings.TrimSpace(slug) == "" {
+		return raw, nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("tunnel: %q is not a URL: %w", raw, err)
+	}
+	q := u.Query()
+	q.Set("share", strings.TrimSpace(slug))
+	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
 

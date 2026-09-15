@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/hashicorp/yamux"
 )
@@ -27,6 +29,7 @@ import (
 func (c *client) forward(ctx context.Context, stream *yamux.Stream) {
 	defer stream.Close()
 
+	started := time.Now()
 	br := bufio.NewReader(stream)
 	req, err := http.ReadRequest(br)
 	if err != nil {
@@ -36,15 +39,23 @@ func (c *client) forward(ctx context.Context, stream *yamux.Stream) {
 		return
 	}
 
+	entry := RequestLog{At: started, Method: req.Method}
+	if req.URL != nil {
+		entry.Path = req.URL.RequestURI()
+	}
+
 	dialer := &net.Dialer{Timeout: c.cfg.DialTimeout}
 	local, err := dialer.DialContext(ctx, "tcp", c.local)
 	if err != nil {
 		c.log.Warn("the shared app did not answer", "addr", c.local, "err", err)
 		writeGatewayError(stream, c.local)
+		entry.Err = err
+		c.logRequest(entry, started)
 		return
 	}
 
 	upgrade := isUpgrade(req)
+	entry.Upgrade = upgrade
 	c.rewrite(req)
 	if !upgrade {
 		// One exchange per connection, so the app closes when it is done and
@@ -53,11 +64,13 @@ func (c *client) forward(ctx context.Context, stream *yamux.Stream) {
 	}
 
 	done := make(chan struct{}, 2)
+	var out atomic.Int64
 
 	// The app's answer, and after an upgrade everything it says afterwards.
 	go func() {
 		defer func() { done <- struct{}{} }()
-		_, _ = io.Copy(stream, local)
+		n, _ := io.Copy(stream, local)
+		out.Add(n)
 		// The response is finished: half-close, so the relay reads EOF.
 		_ = stream.Close()
 	}()
@@ -87,6 +100,19 @@ func (c *client) forward(ctx context.Context, stream *yamux.Stream) {
 
 	<-done
 	<-done
+	entry.BytesOut = out.Load()
+	c.logRequest(entry, started)
+}
+
+// logRequest hands one finished exchange to whatever is watching. It is called
+// from the exchange's own goroutine, which is why the contract on OnRequest is
+// that it must not block.
+func (c *client) logRequest(entry RequestLog, started time.Time) {
+	if c.cfg.OnRequest == nil {
+		return
+	}
+	entry.Duration = time.Since(started)
+	c.cfg.OnRequest(entry)
 }
 
 // rewrite makes the request look local.
