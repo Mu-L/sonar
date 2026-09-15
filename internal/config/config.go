@@ -23,6 +23,9 @@ type Config struct {
 	// Desktop holds where the desktop app comes from and what
 	// `sonar install desktop` last put on this machine.
 	Desktop DesktopConfig `yaml:"desktop"`
+	// Share holds the sharing settings; today that is the relay this machine
+	// signs in to (see share.go).
+	Share ShareConfig `yaml:"share"`
 }
 
 // DesktopConfig is the desktop app's corner of the config. download_base is a
@@ -221,6 +224,11 @@ const template = `# sonar configuration
 #       identity: ~/.ssh/id_ed25519
 #       remote_bin: ~/.local/bin/sonar
 
+# share:            # sharing a local port through the relay
+#   # The relay sonar signs in to and shares through. Change it only for a
+#   # self-hosted relay; SONAR_RELAY overrides it for one process.
+#   relay: https://relay.trysonar.dev
+
 # desktop:          # the Sonar desktop app
 #   # Where 'sonar install desktop' fetches desktop.json and the artifacts it
 #   # names. --base and SONAR_DESKTOP_BASE both win over this.
@@ -241,6 +249,11 @@ const template = `# sonar configuration
 #   SONAR_DESKTOP_BASE
 #                  where 'sonar install desktop' looks, overriding
 #                  desktop.download_base
+#   SONAR_RELAY    the relay to sign in to and share through, overriding
+#                  share.relay
+#   SONAR_CREDENTIALS_STORE
+#                  set to 'file' to keep the relay session in
+#                  ~/.config/sonar/credentials.json instead of the OS keychain
 `
 
 // WriteTemplate writes a commented starter config to Path(), creating the
@@ -271,6 +284,14 @@ var validFilters = map[string]bool{"docker": true, "user": true, "system": true}
 // and returning a warning for each. Valid neighboring settings are preserved.
 func validate(cfg *Config) []string {
 	var warnings []string
+
+	// The relay is validated here rather than in Relay() so that
+	// `sonar config set share.relay …` refuses a bad value at the moment it
+	// is written, instead of accepting it and ignoring it on every load.
+	if _, w := ResolveRelay("", cfg.Share.Relay); w != "" {
+		warnings = append(warnings, w)
+		cfg.Share.Relay = ""
+	}
 
 	// Columns: every entry must be a known display column.
 	known := make(map[string]bool, len(display.AllColumns))
