@@ -569,6 +569,11 @@ func TestRegisterRefusesAnotherRelaysSession(t *testing.T) {
 		t.Fatal("Register accepted a session for another relay")
 	}
 	assertCode(t, err, rpc.CodeInvalidParams)
+
+	// A trailing slash is the same relay, not another one.
+	if _, err := m.Register(context.Background(), f.token, f.URL+"/"); err != nil {
+		t.Errorf("Register refused its own relay written with a trailing slash: %v", err)
+	}
 }
 
 // A 401 on an authenticated call is the relay saying the session is over. It

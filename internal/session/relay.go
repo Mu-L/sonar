@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/raskrebs/sonar/internal/config"
 	"github.com/raskrebs/sonar/internal/credentials"
 	"github.com/raskrebs/sonar/internal/daemon/rpc"
 )
@@ -219,7 +220,14 @@ func (m *Manager) Register(ctx context.Context, token, relay string) (rpc.Sessio
 			"token is required", `{"token": "<the session the relay issued>"}`)
 	}
 	if relay = strings.TrimSpace(relay); relay != "" {
-		if strings.TrimSuffix(relay, "/") != m.relay {
+		// Compared as origins, so a trailing slash or a spelled-out default
+		// port is not mistaken for a different relay.
+		origin, err := config.Origin(relay)
+		if err != nil {
+			return rpc.SessionRegisterResult{}, rpc.NewError(rpc.CodeInvalidParams,
+				"relay is not a URL: "+err.Error(), `{"relay": "https://relay.trysonar.dev"}`)
+		}
+		if origin != m.relay {
 			return rpc.SessionRegisterResult{}, rpc.NewError(rpc.CodeInvalidParams,
 				fmt.Sprintf("that session is for %s, and this daemon uses %s", relay, m.relay),
 				"point both at the same relay: `sonar config set share.relay <url>`")

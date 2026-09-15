@@ -66,6 +66,12 @@ func ResolveRelay(env, configured string) (string, string) {
 	return DefaultRelay, ""
 }
 
+// Origin reduces a relay URL written any reasonable way to the origin
+// [Config.Relay] would return, so two spellings of one relay compare equal.
+// `session.register` uses it to tell "the app is pointed somewhere else" from
+// "the app wrote a trailing slash".
+func Origin(raw string) (string, error) { return normalizeRelay(strings.TrimSpace(raw)) }
+
 // normalizeRelay accepts an absolute http or https URL and returns it with any
 // trailing slash and any path, query or fragment removed: the relay is an
 // origin, and `https://relay.example/v1/` with a route appended would be
