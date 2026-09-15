@@ -145,7 +145,7 @@ func doctorDaemonProbe(ctx context.Context) doctor.DaemonInfo {
 	hello := c.Hello()
 	var status rpc.DaemonStatusResult
 	_ = c.Call(ctx, "daemon.status", rpc.Empty{}, &status)
-	return doctor.DaemonInfo{
+	info := doctor.DaemonInfo{
 		Reachable:       true,
 		Version:         hello.DaemonVersion,
 		ProtocolVersion: hello.ProtocolVersion,
@@ -153,6 +153,14 @@ func doctorDaemonProbe(ctx context.Context) doctor.DaemonInfo {
 		PID:             hello.PID,
 		DBPath:          status.DBPath,
 	}
+	// Asked of the daemon, never of the keychain: the daemon owns the session
+	// and has already paid for the one read this launch gets. A daemon too old
+	// to know the method leaves the row nil, and the check skips.
+	var session rpc.SessionStatusResult
+	if err := c.Call(ctx, "session.status", rpc.Empty{}, &session); err == nil {
+		info.Session = &session
+	}
+	return info
 }
 
 // ---------------------------------------------------------------- render ---

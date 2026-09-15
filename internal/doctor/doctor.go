@@ -68,6 +68,16 @@ type DaemonInfo struct {
 	Socket          string
 	PID             int
 	DBPath          string
+
+	// Session is the daemon's answer to `session.status`: who this machine is
+	// signed in to the relay as, and where that session is kept. Nil when the
+	// daemon could not be asked, or is older than the session methods.
+	//
+	// It rides along with the daemon probe rather than being a seam of its own
+	// because a doctor run dials the daemon exactly once, and because only the
+	// daemon may ask: it reads its keychain once per launch, and a second
+	// asker on macOS is a second password dialog.
+	Session *rpc.SessionStatusResult
 }
 
 // Env is the slice of the world the checks read. Everything that a test would
@@ -138,6 +148,7 @@ func checks() []check {
 		{id: "daemon_protocol", run: checkDaemonProtocol},
 		{id: "socket_permissions", run: checkSocketPermissions},
 		{id: "db_ok", run: checkDBOK},
+		{id: "relay_session", run: checkRelaySession},
 	}
 	for _, tool := range mcpTools() {
 		list = append(list, check{id: tool.id, run: tool.run})

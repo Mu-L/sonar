@@ -7,6 +7,7 @@ import (
 
 	"github.com/raskrebs/sonar/internal/daemon"
 	"github.com/raskrebs/sonar/internal/daemon/rpc"
+	"github.com/raskrebs/sonar/internal/session"
 )
 
 // `daemon.doctor` exists so the desktop app can diagnose an installation
@@ -44,6 +45,12 @@ func handleDoctor(ctx context.Context, req *daemon.Request) (any, error) {
 		Socket:          rt.Socket,
 		PID:             rt.PID,
 		DBPath:          rt.DBPath(),
+	}
+	// Answered from this process rather than over the socket: the daemon is
+	// the one that may ask the keychain, and it has already done so.
+	if m := session.Current(); m != nil {
+		status := m.Status()
+		self.Session = &status
 	}
 	env := Env{
 		Mode:       ModeDaemon,
