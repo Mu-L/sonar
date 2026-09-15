@@ -76,6 +76,9 @@ type Manager struct {
 
 // Options builds a Manager. Every field has a working default.
 type Options struct {
+	// Session is where the account session comes from. Nil means
+	// internal/session, which is what production wants; a test that has no
+	// credentials store passes its own.
 	Session        caller
 	Logger         *slog.Logger
 	Now            func() time.Time
@@ -111,6 +114,9 @@ func New(opts Options) *Manager {
 		connectTimeout: opts.ConnectTimeout,
 		installID:      opts.InstallID,
 		shares:         map[string]*live{},
+	}
+	if m.session == nil {
+		m.session = sessionAdapter{}
 	}
 	if m.log == nil {
 		m.log = slog.New(slog.DiscardHandler)
@@ -257,9 +263,10 @@ func (m *Manager) request(t target, ttl string, replace bool) (publishRequest, e
 	req.InstallID, req.ProjectRoot, req.Port = m.installID, t.ProjectRoot, t.Port
 	if req.InstallID == "" || req.ProjectRoot == "" || req.Port <= 0 {
 		return publishRequest{}, rpc.NewError(rpc.CodeInvalidParams,
-			"this port has no project to key a share on",
-			"run `sonar init` in the project and commit the sonar.yaml, "+
-				"or start the service from a directory sonar can see")
+			"this port has no project behind it, so there is nothing to key a URL on: "+
+				"sonar can see neither a sonar.yaml service nor the directory the process is running in",
+			"run `sonar init` in the project and commit the sonar.yaml — "+
+				"then the URL follows the project rather than this machine")
 	}
 	return req, nil
 }

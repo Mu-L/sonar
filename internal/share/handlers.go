@@ -56,10 +56,7 @@ func init() {
 }
 
 func start(rt *daemon.Runtime) {
-	SetManager(New(Options{
-		Session: sessionAdapter{},
-		Logger:  rt.Logger,
-	}))
+	SetManager(New(Options{Logger: rt.Logger}))
 	rt.Logger.Debug("sharing ready", "install_id", InstallID())
 }
 

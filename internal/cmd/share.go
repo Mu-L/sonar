@@ -508,7 +508,9 @@ func shareIn(err error) *state.Share {
 	return nil
 }
 
-func stdinIsTerminal() bool {
+// stdinIsTerminal is whether there is someone there to answer a question. It is
+// a variable so a test can be both a terminal and not one.
+var stdinIsTerminal = func() bool {
 	info, err := os.Stdin.Stat()
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }

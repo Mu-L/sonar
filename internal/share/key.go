@@ -50,25 +50,33 @@ type target struct {
 // committed reports whether this target names a service from a `sonar.yaml`.
 func (t target) committed() bool { return t.Repo != "" }
 
-// mainCheckoutWorktree is what goes in the worktree column for a repository's
-// main checkout.
+// worktreeColumn is what goes in the relay's `worktree` column.
 //
-// state.Group.Worktree is empty there — it is the `<worktree>` half of a
-// `<repo>@<worktree>` group name and a main checkout has none — but the relay's
-// committed key requires all three columns to be set, because a unique index
-// treats two empty-as-NULL columns as distinct and re-use is the one property
-// the table exists to guarantee. So the main checkout needs a name of its own.
+// It is the group name, not state.Group.Worktree, and the reason is that the
+// relay's committed key requires all three columns to be set: a unique index
+// treats two empty strings as one row but two NULLs as distinct, so the
+// migration predicates its partial index on `repo <> ”` and the daemon must
+// never send a key with a hole in it. A main checkout's Group.Worktree is
+// exactly such a hole — it is the `<worktree>` half of a `<repo>@<worktree>`
+// name, and a main checkout has none.
 //
-// The group name is that name: for a main checkout it is exactly the repo, and
-// for a linked worktree it is `<repo>@<worktree>`, so it can never collide with
-// a real worktree's name however someone names their directories. The column
-// then reads `repo=acme, worktree=acme` for a main checkout, which is odd to
-// look at and exactly right to index on.
+// Sending Group.Worktree-or-the-repo would close the hole and open a worse one:
+// a linked worktree whose directory is called `acme`, in a repository called
+// `acme`, would key identically to that repository's main checkout and the two
+// would share one URL. The group name has no such case. A main checkout's is
+// `acme` and a linked worktree's is `acme@acme`, so every checkout of every
+// repository is its own row, which is what "two worktrees are two previews"
+// means. The column reads `repo=acme, worktree=acme@feature`, which is
+// redundant to look at and exactly right to index on.
+//
+// It still travels, which is the property the committed key exists for: a
+// clone of the same repository on another machine produces the same group name
+// for the same checkout, because neither half of the name is a path.
 func worktreeColumn(g state.Group) string {
-	if w := strings.TrimSpace(g.Worktree); w != "" {
-		return w
+	if name := strings.TrimSpace(g.Name); name != "" {
+		return name
 	}
-	return strings.TrimSpace(g.Name)
+	return strings.TrimSpace(g.Repo)
 }
 
 // resolveTarget turns a selector into the key for a share.
