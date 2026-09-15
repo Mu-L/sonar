@@ -129,9 +129,15 @@ var hostRoutes = map[string]hostRoute{
 // `state.*` has its own, richer host selection (`{hosts: [...]}`, §39) and is
 // the one place a client sees several machines at once. `stream.cancel` is
 // about a subscription this connection owns, and a relayed stream is cancelled
-// through it, not around it. `daemon.hello` and `daemon.shutdown` are about the
-// daemon the client is attached to. And `remote.*` is the bridge itself:
-// forwarding it would chain hosts, which the design rules out.
+// through it, not around it. `daemon.hello`, `daemon.shutdown` and
+// `daemon.bridged` are about the daemon the client is attached to. And
+// `remote.*` is the bridge itself: forwarding it would chain hosts, which the
+// design rules out.
+//
+// This is not the credential guard: a method that must not cross a bridge is
+// registered with RegisterLocalOnly and refused in ForwardTo, because being
+// unroutable here only means "the host field is left alone", which for a
+// method carrying a token would be a silent local call rather than a refusal.
 func unroutable(method string) bool {
 	switch {
 	case strings.HasPrefix(method, "state."),

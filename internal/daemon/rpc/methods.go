@@ -24,8 +24,10 @@ import (
 // (contract §39).
 //
 // The daemon accepts it on every method it serves except `state.*`, `stream.*`,
-// `daemon.hello`, `daemon.shutdown` and the `remote.*` family. It is embedded
-// in the params types below where it is worth spelling out in the schema.
+// `daemon.hello`, `daemon.shutdown`, `daemon.bridged` and the `remote.*`
+// family. It is embedded in the params types below where it is worth spelling
+// out in the schema. `session.register` takes it and refuses it: a session
+// token must never be forwarded to a machine someone else administers.
 type HostParams struct {
 	// Host names a registered remote host. Empty or "localhost" is this
 	// machine.
