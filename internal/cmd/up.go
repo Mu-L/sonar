@@ -2,18 +2,15 @@ package cmd
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/raskrebs/sonar/internal/daemon/client"
 	"github.com/raskrebs/sonar/internal/daemon/rpc"
 	"github.com/raskrebs/sonar/internal/display"
 	"github.com/raskrebs/sonar/internal/groups"
-	"github.com/raskrebs/sonar/internal/profile"
 	"github.com/spf13/cobra"
 
 	// The daemon serves groups.start from this package's init(); `sonar serve`
@@ -49,7 +46,7 @@ func init() {
 }
 
 func upRun(cmd *cobra.Command, args []string) error {
-	params, err := upParams(args)
+	params, cfg, err := upParams(args)
 	if err != nil {
 		return err
 	}
@@ -60,10 +57,14 @@ func upRun(cmd *cobra.Command, args []string) error {
 	}
 	defer c.Close()
 
+	if err := requireConfigSupport(c, cfg); err != nil {
+		return err
+	}
+
 	var start rpc.GroupsStartResult
 	stream, err := c.Stream(cmd.Context(), "groups.start", params, &start)
 	if err != nil {
-		return upError(cmd, args, err)
+		return daemonError(err)
 	}
 	defer stream.Close()
 
@@ -72,7 +73,7 @@ func upRun(cmd *cobra.Command, args []string) error {
 
 // upParams turns the command line into groups.start params: a name when one was
 // given, the config at or above the working directory otherwise.
-func upParams(args []string) (rpc.GroupsStartParams, error) {
+func upParams(args []string) (rpc.GroupsStartParams, *groups.Config, error) {
 	params := rpc.GroupsStartParams{HostParams: hostParams(), Only: upOnly}
 	if !onRemoteHost() {
 		// The services run as if started from this shell. A remote host gets
@@ -80,21 +81,23 @@ func upParams(args []string) (rpc.GroupsStartParams, error) {
 		params.Env = callerEnv()
 	}
 	if len(args) == 1 {
+		// Named from anywhere: the file is the daemon's to find, so there is
+		// nothing here to check against it.
 		name := strings.TrimSpace(args[0])
 		params.Name = &name
-		return params, nil
+		return params, nil, nil
 	}
 	if onRemoteHost() {
 		// The config path below is a path on this machine, and the remote
 		// daemon resolves groups against its own sonar.yaml files. Naming the
 		// group is the only thing that can mean the same on both sides.
-		return params, fmt.Errorf("name the group to start on %s: `sonar up <group> --host %s`",
+		return params, nil, fmt.Errorf("name the group to start on %s: `sonar up <group> --host %s`",
 			remoteHostFlag, remoteHostFlag)
 	}
 
 	wd, err := os.Getwd()
 	if err != nil {
-		return params, fmt.Errorf("resolving the working directory: %w", err)
+		return params, nil, fmt.Errorf("resolving the working directory: %w", err)
 	}
 	index := groups.NewIndex()
 	index.Observe(wd)
@@ -104,13 +107,13 @@ func upParams(args []string) (rpc.GroupsStartParams, error) {
 		// at all, and saying so is the difference between a two-second fix and
 		// a puzzled `ls -a`.
 		if bad := index.Invalid(); len(bad) > 0 {
-			return params, fmt.Errorf("%s cannot be used: %w", groups.ConfigName, bad[0].Err)
+			return params, nil, fmt.Errorf("%s cannot be used: %w", groups.ConfigName, bad[0].Err)
 		}
-		return params, fmt.Errorf("no %s at or above %s\nhint: `sonar init` writes one, or name a group: `sonar up <group>`",
+		return params, nil, fmt.Errorf("no %s at or above %s\nhint: `sonar init` writes one, or name a group: `sonar up <group>`",
 			groups.ConfigName, shortPath(wd))
 	}
 	params.ConfigPath = &cfg.Path
-	return params, nil
+	return params, cfg, nil
 }
 
 // consumeStart prints one line per service as the daemon reports it, then the
@@ -166,11 +169,13 @@ func printStartChunk(c rpc.GroupsStartChunk) {
 		}
 		fmt.Printf("  %s %s  %s\n", display.Dim("-"), display.Bold(c.Service), display.Dim(reason))
 	default:
-		where := fmt.Sprintf("pid %d  %s", c.PID, shortPath(c.LogPath))
+		// The address, not the port number: a terminal makes a URL clickable,
+		// and opening the thing you just started is the next thing you do.
+		where := display.Dim(fmt.Sprintf("pid %d  %s", c.PID, shortPath(c.LogPath)))
 		if c.Port > 0 {
-			where = fmt.Sprintf("port %d  %s", c.Port, where)
+			where = display.Underline(groups.URL(c.Port)) + "  " + where
 		}
-		fmt.Printf("  %s %s  %s\n", display.Green("✓"), display.Bold(c.Service), display.Dim(where))
+		fmt.Printf("  %s %s  %s\n", display.Green("✓"), display.Bold(c.Service), where)
 	}
 }
 
@@ -183,36 +188,6 @@ func printStartSummary(end rpc.GroupsStartEnd) {
 		parts = append(parts, display.Red(fmt.Sprintf("%d failed", len(end.Errors))))
 	}
 	fmt.Printf("\n%s\n", display.Dim(strings.Join(parts, ", ")))
-}
-
-// upError adds the migration notice for the old `sonar up <profile>`: profiles
-// are gone from this command, and someone whose muscle memory still types it
-// should be told where they went rather than just "no group".
-//
-// It goes through Hint, the one notice mechanism the aliases share (§23), so it
-// is a single stderr line, printed at most once, and silenced by --json and by
-// SONAR_NO_HINTS like every other migration notice.
-func upError(cmd *cobra.Command, args []string, err error) error {
-	out := daemonError(err)
-	var re *rpc.Error
-	if len(args) != 1 || !errors.As(err, &re) || re.Data.Code != "not_found" {
-		return out
-	}
-	if hasProfile(args[0]) {
-		Hint(cmd, HintUpProfile(args[0]))
-	}
-	return out
-}
-
-// hasProfile reports whether a name still exists as a profile. An unreadable
-// profile directory is simply "no profile": the notice is a courtesy, not a
-// reason to fail differently.
-func hasProfile(name string) bool {
-	names, err := profile.List()
-	if err != nil {
-		return false
-	}
-	return slices.Contains(names, name)
 }
 
 // shortPath renders a path under the home directory as ~/….
