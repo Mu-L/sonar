@@ -681,6 +681,9 @@
         },
         "hint": {
           "type": "string"
+        },
+        "share": {
+          "$ref": "#/definitions/Share"
         }
       },
       "type": "object",

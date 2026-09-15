@@ -1,6 +1,10 @@
 package rpc
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/raskrebs/sonar/internal/state"
+)
 
 // ErrorData is the contract §2 payload every error carries. Clients branch on
 // Code (the stable string), never on the numeric JSON-RPC code.
@@ -8,6 +12,13 @@ type ErrorData struct {
 	Code   string `json:"code"`
 	Detail string `json:"detail"`
 	Hint   string `json:"hint"`
+	// Share is the share a refusal is about, when naming it is what makes the
+	// refusal answerable. `share_limit_reached` (1107) is the case that needs
+	// it: the second attempt should be an offer rather than an error, and both
+	// clients turn it into "you're already sharing web at <url>; stop that and
+	// share api instead?" — which they can only do if they are told which
+	// share is in the way (sonar-relay/docs/SHARE.md, "One share at a time").
+	Share *state.Share `json:"share,omitempty"`
 }
 
 // Error is a JSON-RPC error object.
@@ -101,4 +112,12 @@ func NewError(code int, detail, hint string) *Error {
 // Errorf is NewError with a formatted detail and no hint.
 func Errorf(code int, format string, args ...any) *Error {
 	return NewError(code, fmt.Sprintf(format, args...), "")
+}
+
+// ShareLimitError is 1107 with the live share attached, so a client can make
+// the offer instead of reporting a refusal.
+func ShareLimitError(detail, hint string, live state.Share) *Error {
+	e := NewError(CodeShareLimitReached, detail, hint)
+	e.Data.Share = &live
+	return e
 }

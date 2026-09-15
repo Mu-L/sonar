@@ -341,3 +341,45 @@ func (m *Manager) Verify(ctx context.Context) (rpc.SessionAccount, error) {
 	m.mu.Unlock()
 	return body.SessionAccount, nil
 }
+
+// Response is one relay answer, for a caller outside this package.
+type Response struct {
+	Status int
+	Body   []byte
+}
+
+// Call performs an authenticated relay request on behalf of the stored session
+// and hands back the raw answer.
+//
+// It exists so internal/share can drive the share control plane without a
+// second copy of the session rules. The two that matter and must not be
+// duplicated are here: no session is 1110 with the store's own reason attached,
+// and a 401 from the relay clears the local session rather than being reported,
+// because a dead token left in the store is a daemon that thinks it can share
+// and cannot.
+//
+// The token never leaves this package. A caller gets a status and a body.
+func (m *Manager) Call(ctx context.Context, method, path string, payload any) (Response, error) {
+	got, err := m.authenticated(ctx, method, path, payload)
+	if err != nil {
+		return Response{}, err
+	}
+	return Response{Status: got.status, Body: got.body}, nil
+}
+
+// Token is the stored session's token, for the one caller that genuinely needs
+// the credential itself rather than an answer: the tunnel's WebSocket
+// handshake, which authenticates with `Authorization: Bearer` on a connection
+// this package does not make.
+//
+// Everything else must go through Call. A token handed out is a token that can
+// end up in a log line, and this one is the account.
+func (m *Manager) Token() (string, error) {
+	m.mu.Lock()
+	sess, _, err := m.session()
+	m.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	return sess.Token.Reveal(), nil
+}
