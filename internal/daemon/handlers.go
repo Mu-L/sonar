@@ -17,6 +17,7 @@ func init() {
 	RegisterHandler("daemon.status", handleStatus)
 	RegisterHandler("daemon.shutdown", handleShutdown)
 	RegisterHandler("daemon.schema", handleSchema)
+	RegisterHandler("daemon.bridged", handleBridged)
 
 	RegisterHandler("state.snapshot", handleSnapshot)
 	RegisterHandler("state.subscribe", handleSubscribe)
@@ -44,6 +45,17 @@ func parseInclude(in rpc.Include) (scanner.Include, error) {
 		}
 	}
 	return out, nil
+}
+
+// handleBridged is how `sonar daemon stdio` tells the daemon that everything
+// arriving on this connection comes from another machine. It only ever removes
+// what the connection may do, and it cannot be undone, so a remote calling it
+// again is harmless and a remote never gets to call it first: the pump sends it
+// before it copies a byte.
+func handleBridged(_ context.Context, req *Request) (any, error) {
+	req.Conn.MarkBridged()
+	req.Runtime.Logger.Debug("connection marked as bridged", "conn", req.Conn.ID())
+	return rpc.OKResult{OK: true}, nil
 }
 
 func handleHello(_ context.Context, req *Request) (any, error) {

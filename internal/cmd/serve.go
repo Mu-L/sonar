@@ -14,6 +14,12 @@ import (
 	"github.com/raskrebs/sonar/internal/daemon/client"
 	"github.com/raskrebs/sonar/internal/selfupdate"
 	"github.com/spf13/cobra"
+
+	// The relay session registers its handlers from its own init(). Every
+	// other namespace is pulled in by the command that fronts it; this one has
+	// no command and never will — signing in is a step of `share.create`, not
+	// a `sonar login` — so the daemon's own command is what imports it.
+	_ "github.com/raskrebs/sonar/internal/session"
 )
 
 // detachedEnv marks the child `sonar serve` that `serve --detach` forked. The

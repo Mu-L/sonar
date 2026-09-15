@@ -138,7 +138,7 @@ func unroutable(method string) bool {
 		strings.HasPrefix(method, "stream."),
 		strings.HasPrefix(method, "remote."):
 		return true
-	case method == "daemon.hello", method == "daemon.shutdown":
+	case method == "daemon.hello", method == "daemon.shutdown", method == "daemon.bridged":
 		return true
 	}
 	return false
@@ -385,6 +385,13 @@ func serveRequest(ctx context.Context, req *Request, h Handler) (any, error) {
 // state stream namespaces them, so a client can act on what it is handed
 // without knowing which side produced it.
 func ForwardTo(ctx context.Context, req *Request, host, method string, params json.RawMessage) (any, error) {
+	// The one guard that has to sit here rather than in routeRequest: a
+	// `{"host": …}` and a `remote.call {host, method}` are two ways to reach
+	// the same forward, and this is where they meet (localonly.go).
+	if IsLocalOnly(method) {
+		return nil, errNotLocal(method, "it would be sent to "+host)
+	}
+
 	r := currentRouter()
 	if r == nil {
 		return nil, rpc.NewError(rpc.CodeNotFound,

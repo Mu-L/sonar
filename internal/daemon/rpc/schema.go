@@ -273,6 +273,7 @@ func init() {
 	Describe("daemon.status", HostParams{}, DaemonStatusResult{}, nil, nil)
 	Describe("daemon.schema", Empty{}, DaemonSchemaResult{}, nil, nil)
 	Describe("daemon.doctor", DaemonDoctorParams{}, DaemonDoctorResult{}, nil, nil)
+	Describe("daemon.bridged", Empty{}, OKResult{}, nil, nil)
 
 	// State.
 	Describe("state.snapshot", StateSnapshotParams{}, state.Snapshot{}, nil, nil)
@@ -340,6 +341,14 @@ func init() {
 	Describe("share.list", Empty{}, ShareListResult{}, nil, nil)
 	Describe("share.extend", ShareExtendParams{}, ShareExtendResult{}, nil, nil)
 	Describe("share.logs", ShareLogsParams{}, ShareLogsResult{}, nil, nil)
+
+	// The relay session (sonar-relay/docs/AUTH.md). No CLI command stands in
+	// front of these: sign-in is a step of share.create, not a `sonar login`.
+	Describe("session.status", SessionStatusParams{}, SessionStatusResult{}, nil, nil)
+	Describe("session.register", SessionRegisterParams{}, SessionRegisterResult{}, nil, nil)
+	Describe("session.start", Empty{}, SessionStartResult{}, nil, nil)
+	Describe("session.poll", Empty{}, SessionPollResult{}, nil, nil)
+	Describe("session.clear", Empty{}, SessionClearResult{}, nil, nil)
 
 	// Daemon-owned proxies (spec 3).
 	Describe("map.create", MapCreateParams{}, MapCreateResult{}, nil, nil)

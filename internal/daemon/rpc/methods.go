@@ -1029,3 +1029,145 @@ type MapRequestsChunk struct {
 type MapRequestsEnd struct {
 	Requests int64 `json:"requests"`
 }
+
+// --------------------------------------------------------------- session ---
+
+// The daemon's relay session (sonar-relay/docs/AUTH.md, "Who holds the
+// session"). The daemon is authoritative: it owns the stored session, it is
+// what `share.create` will consult, and signing out here signs out everywhere.
+//
+// There is deliberately no CLI command behind any of this. Sign-in is a step
+// of `share.create`, not a `sonar login`, so these methods are reachable only
+// over RPC — from the desktop app, and later from the CLI's inline prompt.
+
+// SessionAccount is who a session belongs to, as the relay's `GET /v1/me` and
+// the device-token `200` both answer it. Nothing in it is a secret; the token
+// itself never crosses this protocol in this direction.
+type SessionAccount struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name,omitempty"`
+	Email       string `json:"email,omitempty"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+// SessionStatusParams asks who this machine is signed in as.
+type SessionStatusParams struct {
+	// Refresh checks the stored session against the relay (`GET /v1/me`)
+	// before answering, so a session revoked from another machine is noticed
+	// here instead of being believed until the next share.
+	//
+	// It is opt-in because the plain answer is free and this one is a round
+	// trip: a screen that shows who you are on every mount asks without it,
+	// and asks with it when it is the screen *about* the session, or at
+	// launch. A relay that cannot be reached leaves the stored answer
+	// standing — being offline is not being signed out — and only a 401 is
+	// taken as the end of the session.
+	Refresh bool `json:"refresh,omitempty"`
+}
+
+// SessionStatusResult is what this machine is signed in as.
+type SessionStatusResult struct {
+	SignedIn bool `json:"signed_in"`
+	// Account is present only when SignedIn.
+	Account *SessionAccount `json:"account,omitempty"`
+	// StoredIn is "keychain" or "file", and empty when nothing is stored.
+	StoredIn string `json:"stored_in,omitempty"`
+	// Reason says why a stored session was refused: a credentials file others
+	// could read or replace, a record a newer sonar wrote, a keychain that did
+	// not answer. Empty when there simply is no session. It is prose for a
+	// person — `sonar doctor` prints it — not a code to branch on.
+	Reason string `json:"reason,omitempty"`
+	// Relay is the relay this daemon signs in to, so a client can tell that it
+	// and the daemon disagree before it tries to register a token.
+	Relay string `json:"relay"`
+}
+
+// SessionRegisterParams hands the daemon a session token the caller already
+// holds — the desktop app's, which it obtained from its own device flow and
+// keeps in the OS keychain (AUTH.md, "Who holds the session", step 2).
+//
+// There is no `account` field, and that is a deliberate departure from the
+// desktop's shape: the daemon asks the relay `GET /v1/me` rather than believing
+// a caller about whose session this is. A client that could name the account
+// could label someone else's token with its own name, and the round trip is
+// also the only proof the token is live.
+type SessionRegisterParams struct {
+	// Token is the relay session token. An RPC field and never a flag: a token
+	// in argv is readable by every user on the machine through `ps`
+	// (sonar-relay/docs/SHARE.md, "Auth, and what this changes in AUTH.md").
+	Token string `json:"token"`
+	// Relay is the origin the token came from. Optional; when given it must be
+	// the relay this daemon uses, so an app pointed at another one fails
+	// loudly instead of storing a token nothing can spend.
+	Relay string `json:"relay,omitempty"`
+}
+
+type SessionRegisterResult struct {
+	Account  SessionAccount `json:"account"`
+	StoredIn string         `json:"stored_in"`
+}
+
+// SessionStartResult is the relay's answer to `POST /v1/device/code`, minus the
+// `device_code`. That half never leaves the daemon: the caller polls with
+// `session.poll` and no argument, so a screen cannot leak a code it was never
+// given, and a client cannot poll a flow it did not start.
+type SessionStartResult struct {
+	// UserCode is `XXXX-XXXX`, the thing a person types.
+	UserCode string `json:"user_code"`
+	// VerificationURI is the page to open; VerificationURIComplete is the same
+	// page with the code already in it.
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	// ExpiresIn is how many seconds the code is good for.
+	ExpiresIn int `json:"expires_in"`
+	// Interval is how many seconds to wait between polls. The relay states it
+	// here and re-states it on every slow_down; its number is the one to
+	// honour.
+	Interval int `json:"interval"`
+}
+
+// Session poll states. RFC 8628's vocabulary, because every client already
+// knows it.
+const (
+	// SessionPending: nobody has approved the code yet.
+	SessionPending = "pending"
+	// SessionSlowDown: polled too fast. Not a failure — it carries the new
+	// interval, and a client that treats it as one backs off into a number it
+	// never reads.
+	SessionSlowDown = "slow_down"
+	// SessionDenied: the person declined.
+	SessionDenied = "denied"
+	// SessionExpired: the code is no longer valid. The relay answers 410 for a
+	// code that aged out, one already claimed and one that never existed —
+	// deliberately indistinguishable — so Detail says "no longer valid" rather
+	// than "expired".
+	SessionExpired = "expired"
+	// SessionSignedIn: the relay issued a session and the daemon stored it.
+	SessionSignedIn = "signed_in"
+)
+
+// SessionPollResult is one poll of the flow the daemon is holding.
+type SessionPollResult struct {
+	// State is one of the Session* constants above.
+	State string `json:"state"`
+	// Interval is the seconds to wait before the next poll, on pending and
+	// slow_down.
+	Interval int `json:"interval,omitempty"`
+	// Account is present only on signed_in.
+	Account *SessionAccount `json:"account,omitempty"`
+	// StoredIn is where the new session went, on signed_in.
+	StoredIn string `json:"stored_in,omitempty"`
+	// Detail is a sentence for a person, on the states that end a flow.
+	Detail string `json:"detail,omitempty"`
+}
+
+// SessionClearResult is what signing out did. `revoked: false` with a Detail is
+// the ordinary offline answer and not a failure: the local session is gone
+// either way, because someone who asked to sign out must end up signed out.
+type SessionClearResult struct {
+	Revoked bool `json:"revoked"`
+	// Detail is why the relay was not told. Never a token.
+	Detail string `json:"detail,omitempty"`
+}

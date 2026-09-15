@@ -3507,6 +3507,69 @@
         "detected"
       ]
     },
+    "SessionAccount": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "avatar_url": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id"
+      ]
+    },
+    "SessionClearResult": {
+      "properties": {
+        "revoked": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "revoked"
+      ]
+    },
+    "SessionPollResult": {
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "interval": {
+          "type": "integer"
+        },
+        "account": {
+          "$ref": "#/definitions/SessionAccount"
+        },
+        "stored_in": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "state"
+      ]
+    },
     "SessionRecord": {
       "properties": {
         "id": {
@@ -3564,6 +3627,94 @@
         "ports",
         "groups",
         "active"
+      ]
+    },
+    "SessionRegisterParams": {
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "relay": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "token"
+      ]
+    },
+    "SessionRegisterResult": {
+      "properties": {
+        "account": {
+          "$ref": "#/definitions/SessionAccount"
+        },
+        "stored_in": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "account",
+        "stored_in"
+      ]
+    },
+    "SessionStartResult": {
+      "properties": {
+        "user_code": {
+          "type": "string"
+        },
+        "verification_uri": {
+          "type": "string"
+        },
+        "verification_uri_complete": {
+          "type": "string"
+        },
+        "expires_in": {
+          "type": "integer"
+        },
+        "interval": {
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "required": [
+        "user_code",
+        "verification_uri",
+        "verification_uri_complete",
+        "expires_in",
+        "interval"
+      ]
+    },
+    "SessionStatusParams": {
+      "properties": {
+        "refresh": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SessionStatusResult": {
+      "properties": {
+        "signed_in": {
+          "type": "boolean"
+        },
+        "account": {
+          "$ref": "#/definitions/SessionAccount"
+        },
+        "stored_in": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "relay": {
+          "type": "string"
+        }
+      },
+      "type": "object",
+      "required": [
+        "signed_in",
+        "relay"
       ]
     },
     "SessionsInspectParams": {
@@ -4155,6 +4306,14 @@
         "$ref": "#/definitions/ConfigSetResult"
       }
     },
+    "daemon.bridged": {
+      "params": {
+        "$ref": "#/definitions/Empty"
+      },
+      "result": {
+        "$ref": "#/definitions/OKResult"
+      }
+    },
     "daemon.doctor": {
       "params": {
         "$ref": "#/definitions/DaemonDoctorParams"
@@ -4495,6 +4654,46 @@
       },
       "result": {
         "$ref": "#/definitions/OKResult"
+      }
+    },
+    "session.clear": {
+      "params": {
+        "$ref": "#/definitions/Empty"
+      },
+      "result": {
+        "$ref": "#/definitions/SessionClearResult"
+      }
+    },
+    "session.poll": {
+      "params": {
+        "$ref": "#/definitions/Empty"
+      },
+      "result": {
+        "$ref": "#/definitions/SessionPollResult"
+      }
+    },
+    "session.register": {
+      "params": {
+        "$ref": "#/definitions/SessionRegisterParams"
+      },
+      "result": {
+        "$ref": "#/definitions/SessionRegisterResult"
+      }
+    },
+    "session.start": {
+      "params": {
+        "$ref": "#/definitions/Empty"
+      },
+      "result": {
+        "$ref": "#/definitions/SessionStartResult"
+      }
+    },
+    "session.status": {
+      "params": {
+        "$ref": "#/definitions/SessionStatusParams"
+      },
+      "result": {
+        "$ref": "#/definitions/SessionStatusResult"
       }
     },
     "sessions.inspect": {

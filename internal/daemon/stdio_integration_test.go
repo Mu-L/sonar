@@ -7,6 +7,7 @@ package daemon_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os/exec"
 	"testing"
@@ -172,5 +173,75 @@ func TestStdioRefusesWithNoAutostart(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("want a failure with no daemon running, got:\n%s", out)
+	}
+}
+
+// TestStdioRefusesToRegisterASession is the local-socket guard, end to end and
+// through the real binary. `ssh <host> sonar daemon stdio` hands another
+// machine the whole protocol; a relay session token must not be one of the
+// things it can put on this one.
+//
+// The pump itself is what enforces it: before it copies a byte of stdin it
+// calls `daemon.bridged` on the socket, which marks that connection for the
+// life of the process and cannot be undone. Everything else still works over
+// the same stream, which is the other half of the assertion — the guard is one
+// method, not a lockout.
+func TestStdioRefusesToRegisterASession(t *testing.T) {
+	e := newEnv(t)
+	e.serve()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	c, err := client.Attach(ctx, e.startStdio(t), "stdio", client.ClientInfo{
+		Name: "daemon", Version: "itest",
+	})
+	if err != nil {
+		t.Fatalf("handshake over stdio: %v", err)
+	}
+	defer c.Close()
+
+	var out rpc.SessionRegisterResult
+	err = c.Call(ctx, "session.register", rpc.SessionRegisterParams{
+		Token: "a-token-from-somewhere-else",
+	}, &out)
+	if err == nil {
+		t.Fatal("session.register was served over `sonar daemon stdio`")
+	}
+	var re *rpc.Error
+	if !errors.As(err, &re) {
+		t.Fatalf("error %v is not a protocol error", err)
+	}
+	if re.Data.Code != "permission_denied" {
+		t.Errorf("code = %q, want permission_denied (%s)", re.Data.Code, re.Message)
+	}
+
+	// The rest of the namespace is reachable: signing a headless box in over
+	// its own bridge is the case the device flow exists for.
+	var status rpc.SessionStatusResult
+	if err := c.Call(ctx, "session.status", rpc.Empty{}, &status); err != nil {
+		t.Fatalf("session.status over stdio: %v", err)
+	}
+	if status.SignedIn {
+		t.Errorf("a fresh daemon is signed in: %+v", status)
+	}
+	if status.Relay == "" {
+		t.Error("session.status did not name the relay it would use")
+	}
+
+	// And on the socket, where the caller really is on this machine, the same
+	// method is served — it fails at the relay, not at the guard.
+	direct := e.connect(ctx)
+	err = direct.Call(ctx, "session.register", rpc.SessionRegisterParams{
+		Token: "a-token-from-somewhere-else",
+	}, &out)
+	if err == nil {
+		t.Fatal("session.register accepted a token with no relay to check it against")
+	}
+	if !errors.As(err, &re) {
+		t.Fatalf("error %v is not a protocol error", err)
+	}
+	if re.Data.Code == "permission_denied" {
+		t.Errorf("the guard fired on the local socket too: %s", re.Message)
 	}
 }

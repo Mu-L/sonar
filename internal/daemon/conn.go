@@ -51,6 +51,10 @@ type Conn struct {
 	helloDone      bool
 	streams        map[string]context.CancelFunc
 	shutdownOnIdle bool
+	// bridged is set by daemon.bridged and never cleared: this connection
+	// carries another machine's RPC, and local-only methods are refused on it
+	// (localonly.go).
+	bridged bool
 }
 
 func newConn(id uint64, srv *Server, nc net.Conn) *Conn {
@@ -81,6 +85,26 @@ func (c *Conn) setHello(name, version string, keepalive bool) {
 	c.client, c.clientVersion, c.keepalive, c.helloDone = name, version, keepalive, true
 	c.mu.Unlock()
 	c.srv.recountKeepalive()
+}
+
+// MarkBridged records that this connection is the far end of a `sonar daemon
+// stdio` pump, so whatever is on the other side of it is not on this machine.
+// It is one-way: a connection that has said so cannot take it back, which is
+// what makes it safe for the pump to say it before it copies a single byte the
+// remote sent.
+func (c *Conn) MarkBridged() {
+	c.mu.Lock()
+	c.bridged = true
+	c.mu.Unlock()
+}
+
+// Bridged reports whether this connection reached the daemon from another
+// machine. False for an ordinary client on the socket, which is same-user and
+// local by the socket's own 0600 mode.
+func (c *Conn) Bridged() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.bridged
 }
 
 // Keepalive reports whether this client asked the daemon to stay up.
@@ -288,6 +312,11 @@ func (c *Conn) serve(ctx context.Context, msg rpc.Message) {
 		c.replyError(msg.ID, rpc.NewError(rpc.CodeNotFound,
 			"unknown method "+msg.Method,
 			"run `sonar daemon schema` to see the methods this daemon serves"))
+		return
+	}
+
+	if IsLocalOnly(msg.Method) && c.Bridged() {
+		c.replyError(msg.ID, errNotLocal(msg.Method, "this connection came over a bridge from another machine"))
 		return
 	}
 

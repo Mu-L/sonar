@@ -1,15 +1,19 @@
 package cmd
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/raskrebs/sonar/internal/daemon"
 	"github.com/raskrebs/sonar/internal/daemon/client"
+	"github.com/raskrebs/sonar/internal/daemon/rpc"
 	"github.com/spf13/cobra"
 )
 
@@ -64,13 +68,76 @@ func runDaemonStdio(cmd *cobra.Command, _ []string) error {
 	}
 	defer conn.Close()
 
-	return pump(conn, os.Stdin, os.Stdout)
+	buffered, err := markBridged(conn)
+	if err != nil {
+		return err
+	}
+	return pump(conn, buffered, os.Stdin, os.Stdout)
+}
+
+// bridgeMarkTimeout bounds the one exchange this command makes on its own
+// behalf. The daemon answers it without touching disk or network, so a second
+// is generous; the point is that a daemon that has wedged fails the bridge
+// instead of hanging an ssh session forever.
+const bridgeMarkTimeout = 5 * time.Second
+
+// bridgeMarkID is the id of that one request. It is not a number, so it cannot
+// collide with the ids of whatever client is about to speak over this bridge.
+const bridgeMarkID = "sonar-daemon-stdio-bridged"
+
+// markBridged tells the daemon that everything after this line comes from
+// another machine, and hands back the reader the pump must use — buffered,
+// because reading the reply may have pulled bytes in after it.
+//
+// It is sent before a single byte of stdin is copied, which is the whole
+// guarantee: a client on the far side cannot get a local-only method in ahead
+// of it, and cannot unsay it, because daemon.bridged only ever takes
+// permissions away.
+//
+// A daemon that has never heard of the method is not an error. It is a daemon
+// older than this binary, which has no local-only methods for the mark to
+// protect — there was nothing on it to refuse.
+func markBridged(conn net.Conn) (io.Reader, error) {
+	_ = conn.SetDeadline(time.Now().Add(bridgeMarkTimeout))
+	defer func() { _ = conn.SetDeadline(time.Time{}) }()
+
+	req, err := json.Marshal(rpc.Request{
+		JSONRPC: rpc.Version,
+		ID:      json.RawMessage(`"` + bridgeMarkID + `"`),
+		Method:  "daemon.bridged",
+		Params:  json.RawMessage(`{}`),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marking the bridge: %w", err)
+	}
+	if _, err := conn.Write(append(req, '\n')); err != nil {
+		return nil, fmt.Errorf("marking the bridge: %w", err)
+	}
+
+	br := bufio.NewReader(conn)
+	line, err := br.ReadBytes('\n')
+	if err != nil {
+		return nil, fmt.Errorf("marking the bridge: %w", err)
+	}
+	var reply rpc.Response
+	if err := json.Unmarshal(line, &reply); err != nil {
+		return nil, fmt.Errorf("marking the bridge: the daemon answered with %s", line)
+	}
+	if string(reply.ID) != `"`+bridgeMarkID+`"` {
+		return nil, fmt.Errorf("marking the bridge: the daemon answered something else first: %s", line)
+	}
+	if reply.Error != nil && reply.Error.Data.Code != "not_found" {
+		return nil, fmt.Errorf("marking the bridge: %s", reply.Error.Message)
+	}
+	return br, nil
 }
 
 // pump copies bytes between the pipes and the socket until either side closes.
 // It parses nothing: the protocol on the socket is the protocol on the wire,
-// so a method this build has never heard of still works across the bridge.
-func pump(conn net.Conn, in io.Reader, out io.Writer) error {
+// so a method this build has never heard of still works across the bridge. The
+// one exchange that is parsed happens before this, in markBridged, and `from`
+// is its leftover buffer.
+func pump(conn net.Conn, from io.Reader, in io.Reader, out io.Writer) error {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -84,7 +151,7 @@ func pump(conn net.Conn, in io.Reader, out io.Writer) error {
 		}
 	}()
 
-	_, err := io.Copy(out, conn)
+	_, err := io.Copy(out, from)
 	<-done
 	if err != nil && !isClosedPipe(err) {
 		return err
