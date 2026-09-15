@@ -3547,6 +3547,14 @@
         "revoked"
       ]
     },
+    "SessionPollParams": {
+      "properties": {
+        "flow_id": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "SessionPollResult": {
       "properties": {
         "state": {
@@ -3660,6 +3668,9 @@
     },
     "SessionStartResult": {
       "properties": {
+        "flow_id": {
+          "type": "string"
+        },
         "user_code": {
           "type": "string"
         },
@@ -3678,6 +3689,7 @@
       },
       "type": "object",
       "required": [
+        "flow_id",
         "user_code",
         "verification_uri",
         "verification_uri_complete",
@@ -4666,7 +4678,7 @@
     },
     "session.poll": {
       "params": {
-        "$ref": "#/definitions/Empty"
+        "$ref": "#/definitions/SessionPollParams"
       },
       "result": {
         "$ref": "#/definitions/SessionPollResult"

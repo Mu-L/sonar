@@ -1113,9 +1113,15 @@ type SessionRegisterResult struct {
 
 // SessionStartResult is the relay's answer to `POST /v1/device/code`, minus the
 // `device_code`. That half never leaves the daemon: the caller polls with
-// `session.poll` and no argument, so a screen cannot leak a code it was never
-// given, and a client cannot poll a flow it did not start.
+// `session.poll`, so a screen cannot leak a code it was never given, and a
+// client cannot poll a flow it did not start.
 type SessionStartResult struct {
+	// FlowID names this flow, so a client polls the code it was handed and
+	// not whichever one started last. It is not a credential — the device code
+	// it stands for never leaves the daemon — and a client that ignores it
+	// still polls its own flow, because a flow also remembers the connection
+	// that started it.
+	FlowID string `json:"flow_id"`
 	// UserCode is `XXXX-XXXX`, the thing a person types.
 	UserCode string `json:"user_code"`
 	// VerificationURI is the page to open; VerificationURIComplete is the same
@@ -1149,6 +1155,15 @@ const (
 	// SessionSignedIn: the relay issued a session and the daemon stored it.
 	SessionSignedIn = "signed_in"
 )
+
+// SessionPollParams names the flow to poll. Both fields of the pair a client
+// needs are optional, and the fallbacks are what make an older client safe:
+// with no flow_id the daemon polls the newest flow this connection started,
+// and only failing that the newest flow on the daemon.
+type SessionPollParams struct {
+	// FlowID is the id `session.start` handed back. Absent means "mine".
+	FlowID string `json:"flow_id,omitempty"`
+}
 
 // SessionPollResult is one poll of the flow the daemon is holding.
 type SessionPollResult struct {

@@ -347,7 +347,7 @@ func init() {
 	Describe("session.status", SessionStatusParams{}, SessionStatusResult{}, nil, nil)
 	Describe("session.register", SessionRegisterParams{}, SessionRegisterResult{}, nil, nil)
 	Describe("session.start", Empty{}, SessionStartResult{}, nil, nil)
-	Describe("session.poll", Empty{}, SessionPollResult{}, nil, nil)
+	Describe("session.poll", SessionPollParams{}, SessionPollResult{}, nil, nil)
 	Describe("session.clear", Empty{}, SessionClearResult{}, nil, nil)
 
 	// Daemon-owned proxies (spec 3).

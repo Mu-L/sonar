@@ -279,6 +279,7 @@ func (s *Server) removeConn(c *Conn, reason string) {
 	s.recountKeepalive()
 	s.touch()
 	s.logger.Debug("client disconnected", "conn", c.id, "reason", reason)
+	runDisconnectHooks(c.id)
 	s.loop.Wake()
 }
 

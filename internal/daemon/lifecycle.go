@@ -107,10 +107,11 @@ func (r *Runtime) Subscribers() int { return r.srv.Subscribers() }
 func (r *Runtime) Uptime() time.Duration { return time.Since(r.StartedAt) }
 
 var (
-	hooksMu       sync.Mutex
-	startHooks    []func(*Runtime)
-	shutdownHooks []func(graceful bool)
-	extraCaps     = map[string]bool{}
+	hooksMu         sync.Mutex
+	startHooks      []func(*Runtime)
+	shutdownHooks   []func(graceful bool)
+	disconnectHooks []func(conn uint64)
+	extraCaps       = map[string]bool{}
 )
 
 // RegisterCapability adds a family name to daemon.hello's capabilities, the
@@ -143,6 +144,28 @@ func OnStart(f func(*Runtime)) {
 	hooksMu.Lock()
 	defer hooksMu.Unlock()
 	startHooks = append(startHooks, f)
+}
+
+// OnDisconnect registers a callback run once for every client connection that
+// goes away, with the connection's id. It is how an extension package drops
+// per-connection state without this package knowing what that state is —
+// internal/session uses it to forget a device flow whose terminal was closed,
+// so an abandoned code is not what a later poll falls back onto.
+//
+// It runs on the closing connection's goroutine. Keep it short and never block.
+func OnDisconnect(f func(conn uint64)) {
+	hooksMu.Lock()
+	defer hooksMu.Unlock()
+	disconnectHooks = append(disconnectHooks, f)
+}
+
+func runDisconnectHooks(conn uint64) {
+	hooksMu.Lock()
+	hooks := append([]func(uint64){}, disconnectHooks...)
+	hooksMu.Unlock()
+	for _, f := range hooks {
+		f(conn)
+	}
 }
 
 // OnShutdown registers a callback run as the daemon stops. graceful is false

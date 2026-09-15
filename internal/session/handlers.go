@@ -51,6 +51,15 @@ func init() {
 	// case the device flow exists for.
 	daemon.RegisterLocalOnly("session.register")
 
+	// A terminal that walked away should not leave a device flow behind: it
+	// is dead weight, and it must not be what a poll with no flow id falls
+	// back onto.
+	daemon.OnDisconnect(func(conn uint64) {
+		if m := Current(); m != nil {
+			m.CancelConn(conn)
+		}
+	})
+
 	daemon.OnStart(start)
 	daemon.OnShutdown(func(bool) { SetManager(nil) })
 }
@@ -111,24 +120,38 @@ func handleRegister(ctx context.Context, req *daemon.Request) (any, error) {
 	return out, nil
 }
 
-func handleStart(ctx context.Context, _ *daemon.Request) (any, error) {
+// connOf is which connection asked, or 0 when a caller built a Request without
+// one. It is the fallback that keeps a client with no flow id polling its own
+// flow rather than whichever started last.
+func connOf(req *daemon.Request) uint64 {
+	if req == nil || req.Conn == nil {
+		return 0
+	}
+	return req.Conn.ID()
+}
+
+func handleStart(ctx context.Context, req *daemon.Request) (any, error) {
 	m, err := requireManager()
 	if err != nil {
 		return nil, err
 	}
-	out, err := m.Start(ctx)
+	out, err := m.StartFor(ctx, connOf(req))
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func handlePoll(ctx context.Context, _ *daemon.Request) (any, error) {
+func handlePoll(ctx context.Context, req *daemon.Request) (any, error) {
+	var p rpc.SessionPollParams
+	if err := req.Bind(&p); err != nil {
+		return nil, err
+	}
 	m, err := requireManager()
 	if err != nil {
 		return nil, err
 	}
-	out, err := m.Poll(ctx)
+	out, err := m.PollFlow(ctx, p.FlowID, connOf(req))
 	if err != nil {
 		return nil, err
 	}

@@ -264,7 +264,10 @@ func (m *Manager) Register(ctx context.Context, token, relay string) (rpc.Sessio
 func (m *Manager) Clear(ctx context.Context) (rpc.SessionClearResult, error) {
 	m.mu.Lock()
 	sess, _, loadErr := m.session()
-	m.pending = nil
+	// Signing out ends every flow, not only the newest: a half-finished
+	// sign-in on another screen is an approval for the account being signed
+	// out of.
+	m.flows, m.order = nil, nil
 	m.mu.Unlock()
 
 	out := rpc.SessionClearResult{Revoked: true}

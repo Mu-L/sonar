@@ -30,9 +30,20 @@
 //
 // `session.start` returns the `user_code` a person types and the URL to type it
 // into; the `device_code`, which is the credential half of the pair, stays in
-// this process. `session.poll` takes no argument: which flow it means is this
-// package's state, so no client can poll a code it was not given, and none can
-// leak one into a log, a crash report or a DOM.
+// this process. `session.poll` never carries a device code either: it names a
+// flow by an opaque id, so no client can poll a code it was not given, and none
+// can leak one into a log, a crash report or a DOM.
+//
+// # More than one flow at a time
+//
+// The desktop app and an inline `sonar share` sign-in can be running at the
+// same moment, and until 2026-09-15 they could not: one `pending` per daemon
+// meant the second `session.start` replaced the first, so the person watching
+// the first screen polled a flow that no longer existed and was told their code
+// had expired. Flows are now a map. Each one remembers the connection that
+// started it, and a poll resolves to the flow it names, else to the newest flow
+// on the polling connection, else to the newest flow anywhere — so a client
+// that has never heard of a flow id still polls its own.
 //
 // # The keychain is asked once
 //
@@ -108,16 +119,43 @@ type Manager struct {
 	cachedIn  credentials.Location
 	cachedErr error
 
-	pending *pending
+	// flows are the device flows in progress, newest last in order. More than
+	// one is the ordinary case, not a mistake: the app can be signing in while
+	// someone runs `sonar share` over SSH on the same machine.
+	flows map[string]*pending
+	order []string
 }
 
-// pending is the device flow in progress: the credential half of the code pair
+// maxFlows bounds how many device flows one daemon holds at once. Well above
+// any real use — the app and a couple of terminals — and low enough that a
+// client looping on session.start cannot grow the map without limit. The
+// oldest is dropped, because the newest is the one on someone's screen.
+const maxFlows = 8
+
+// pending is one device flow in progress: the credential half of the code pair
 // and the interval in force, which every slow_down raises.
 type pending struct {
+	// id is what a client polls by. Random, opaque, and not a secret: it
+	// stands for the device code and never reveals it.
+	id string
+	// conn is the daemon connection that started the flow, or 0 when nothing
+	// said. It is what makes a client that never passes a flow id safe: its
+	// own connection's newest flow is the one it started.
+	conn       uint64
 	deviceCode string
 	interval   int
 	startedAt  time.Time
 	expiresIn  int
+}
+
+// expired reports whether the code this flow holds is past the life the relay
+// gave it. An expired flow is swept rather than polled: the relay would answer
+// 410 for it, and holding it only keeps a dead code in memory.
+func (p *pending) expired(now time.Time) bool {
+	if p.expiresIn <= 0 {
+		return false
+	}
+	return now.After(p.startedAt.Add(time.Duration(p.expiresIn) * time.Second))
 }
 
 // New builds a Manager.

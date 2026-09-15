@@ -130,16 +130,25 @@ func classify(status int, code string) step {
 // "expired" for a typo is misleading.
 const goneDetail = "that code is no longer valid — it may have been mistyped, already used, or left too long"
 
-// Start is `session.start`: `POST /v1/device/code`.
+// Start is `session.start` for a caller with no connection behind it, and is
+// what the tests drive. Production goes through StartFor.
+func (m *Manager) Start(ctx context.Context) (rpc.SessionStartResult, error) {
+	return m.StartFor(ctx, 0)
+}
+
+// StartFor is `session.start`: `POST /v1/device/code`.
 //
 // The hostname goes with it because the approval page names what is asking, and
 // a page that says only "approve this code" teaches people to approve codes. It
 // is a hint, not an identifier: the relay keeps it only for the life of the
 // pending code.
 //
-// Whatever was pending is over. One flow at a time, and the last code asked for
-// is the one on someone's screen.
-func (m *Manager) Start(ctx context.Context) (rpc.SessionStartResult, error) {
+// conn is the daemon connection asking, or 0 when nothing said. Starting a flow
+// no longer ends anybody else's: two clients signing in at once is the ordinary
+// case on a machine with an app and a terminal, and the version of this that
+// kept one pending flow made the second start silently steal the first one's
+// poll (see flows.go).
+func (m *Manager) StartFor(ctx context.Context, conn uint64) (rpc.SessionStartResult, error) {
 	got, err := m.do(ctx, http.MethodPost, "/v1/device/code", map[string]string{
 		"client":        Client,
 		"version":       m.version,
@@ -170,17 +179,23 @@ func (m *Manager) Start(ctx context.Context) (rpc.SessionStartResult, error) {
 		complete = body.VerificationURI
 	}
 
-	m.mu.Lock()
-	m.pending = &pending{
+	flow := &pending{
+		id:         newFlowID(),
+		conn:       conn,
 		deviceCode: body.DeviceCode,
 		interval:   interval,
 		startedAt:  m.now(),
 		expiresIn:  body.ExpiresIn,
 	}
+	m.mu.Lock()
+	m.addFlow(flow)
+	live := len(m.order)
 	m.mu.Unlock()
 
-	m.log.Info("started a relay sign-in", "relay", m.relay, "expires_in", body.ExpiresIn)
+	m.log.Info("started a relay sign-in", "relay", m.relay,
+		"expires_in", body.ExpiresIn, "flow", flow.id, "flows_live", live)
 	return rpc.SessionStartResult{
+		FlowID:                  flow.id,
 		UserCode:                body.UserCode,
 		VerificationURI:         body.VerificationURI,
 		VerificationURIComplete: complete,
@@ -189,11 +204,18 @@ func (m *Manager) Start(ctx context.Context) (rpc.SessionStartResult, error) {
 	}, nil
 }
 
-// Poll is `session.poll`: one `POST /v1/device/token` for the flow this manager
-// is holding. It takes no device code because the caller has never had one.
+// Poll is `session.poll` with nothing to go on: the newest flow. Kept for the
+// tests and for a caller with neither a flow id nor a connection.
 func (m *Manager) Poll(ctx context.Context) (rpc.SessionPollResult, error) {
+	return m.PollFlow(ctx, "", 0)
+}
+
+// PollFlow is `session.poll`: one `POST /v1/device/token` for one flow. It takes
+// no device code because the caller has never had one — only the opaque flow id
+// `session.start` handed back, and even that is optional (see resolveFlow).
+func (m *Manager) PollFlow(ctx context.Context, id string, conn uint64) (rpc.SessionPollResult, error) {
 	m.mu.Lock()
-	flow := m.pending
+	flow := m.resolveFlow(id, conn)
 	m.mu.Unlock()
 
 	// Cancelled, finished, or never started. The flow is over either way, and
@@ -214,7 +236,7 @@ func (m *Manager) Poll(ctx context.Context) (rpc.SessionPollResult, error) {
 	}
 
 	if got.status == http.StatusOK {
-		return m.issued(got)
+		return m.issued(got, flow)
 	}
 
 	var body errorBody
@@ -229,8 +251,8 @@ func (m *Manager) Poll(ctx context.Context) (rpc.SessionPollResult, error) {
 		// Remember it, so a client that forgets to pass the number back still
 		// cannot drive this below what the relay asked for.
 		m.mu.Lock()
-		if m.pending == flow {
-			m.pending.interval = interval
+		if m.flows[flow.id] == flow {
+			flow.interval = interval
 		}
 		m.mu.Unlock()
 		return rpc.SessionPollResult{State: rpc.SessionSlowDown, Interval: interval}, nil
@@ -248,6 +270,7 @@ func (m *Manager) Poll(ctx context.Context) (rpc.SessionPollResult, error) {
 		// A 200 is handled above; reaching here would mean the status changed
 		// under us, and there is no token to hand back.
 		m.endFlow(flow)
+
 		return rpc.SessionPollResult{}, rpc.NewError(rpc.CodeInternal,
 			"the relay answered 200 with no session", "")
 
@@ -260,17 +283,15 @@ func (m *Manager) Poll(ctx context.Context) (rpc.SessionPollResult, error) {
 // issued reads the 200 and stores the session. The device code is spent
 // whatever happens next — it is single-use, and the 200 is the only one it ever
 // gets — so the flow ends before anything that can fail.
-func (m *Manager) issued(got answer) (rpc.SessionPollResult, error) {
+func (m *Manager) issued(got answer, flow *pending) (rpc.SessionPollResult, error) {
 	var body tokenBody
 	if err := got.decode(&body); err != nil {
-		m.mu.Lock()
-		m.pending = nil
-		m.mu.Unlock()
+		m.endFlow(flow)
 		return rpc.SessionPollResult{}, err
 	}
 
 	m.mu.Lock()
-	m.pending = nil
+	m.dropFlow(flow.id)
 	if body.AccessToken == "" {
 		m.mu.Unlock()
 		return rpc.SessionPollResult{}, rpc.NewError(rpc.CodeInternal,
@@ -297,33 +318,41 @@ func (m *Manager) issued(got answer) (rpc.SessionPollResult, error) {
 	}, nil
 }
 
-// endFlow drops the pending flow, unless another Start has already replaced it.
+// endFlow drops one flow, unless it has already gone.
 func (m *Manager) endFlow(flow *pending) {
-	m.mu.Lock()
-	if m.pending == flow {
-		m.pending = nil
+	if flow == nil {
+		return
 	}
+	m.mu.Lock()
+	m.dropFlow(flow.id)
 	m.mu.Unlock()
 }
 
-// Cancel forgets the pending flow. The relay's code ages out on its own fifteen
-// minutes later; there is nothing to tell it. Nothing calls this over RPC yet —
-// `session.start` replacing the flow is how a client abandons one — and it is
-// here because share.create's inline sign-in will need it when the caller
-// walks away.
+// Cancel forgets every pending flow. The relay's codes age out on their own
+// fifteen minutes later; there is nothing to tell it.
 func (m *Manager) Cancel() {
 	m.mu.Lock()
-	m.pending = nil
+	m.flows, m.order = nil, nil
 	m.mu.Unlock()
 }
 
-// PendingExpiresAt is when the code on someone's screen stops being worth
+// CancelFlow forgets one flow, by the id `session.start` handed back. This is
+// what share.create's inline sign-in calls when the person walks away from the
+// terminal, and it leaves everyone else's flow alone.
+func (m *Manager) CancelFlow(id string) {
+	m.mu.Lock()
+	m.dropFlow(id)
+	m.mu.Unlock()
+}
+
+// PendingExpiresAt is when the newest code on someone's screen stops being worth
 // typing, or the zero time when no flow is pending.
 func (m *Manager) PendingExpiresAt() time.Time {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.pending == nil || m.pending.expiresIn <= 0 {
+	f := m.newest()
+	if f == nil || f.expiresIn <= 0 {
 		return time.Time{}
 	}
-	return m.pending.startedAt.Add(time.Duration(m.pending.expiresIn) * time.Second)
+	return f.startedAt.Add(time.Duration(f.expiresIn) * time.Second)
 }
