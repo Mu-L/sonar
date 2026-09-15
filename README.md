@@ -120,9 +120,9 @@ sonar start
 ```
 
 ```
-  ✓ db        port 5432  pid 41022  ~/.config/sonar/logs/my-app/db.log
-  ✓ api       port 21408  pid 41040  ~/.config/sonar/logs/my-app/api.log
-  ✓ frontend  port 21409  pid 41077  ~/.config/sonar/logs/my-app/frontend.log
+  ✓ db        http://localhost:5432   pid 41022  ~/.config/sonar/logs/my-app/db.log
+  ✓ api       http://localhost:21408  pid 41040  ~/.config/sonar/logs/my-app/api.log
+  ✓ frontend  http://localhost:21409  pid 41077  ~/.config/sonar/logs/my-app/frontend.log
 
 3 started
 following the logs; Ctrl+C stops the 3 services started here
@@ -349,9 +349,9 @@ the environment of the shell you ran `sonar up` in, plus `PORT` for a service
 with a port.
 
 ```
-  ✓ db        port 5432  pid 41022  ~/.config/sonar/logs/my-app/db.log
+  ✓ db        http://localhost:5432  pid 41022  ~/.config/sonar/logs/my-app/db.log
   - api       already running
-  ✓ frontend  port 5173  pid 41108  ~/.config/sonar/logs/my-app/frontend.log
+  ✓ frontend  http://localhost:5173  pid 41108  ~/.config/sonar/logs/my-app/frontend.log
 
 2 started, 1 already running
 ```
@@ -393,13 +393,39 @@ sonar groups remove "$group" jobs
 `sonar groups <name>` shows one group's ports and services, and the services
 that are declared but not running.
 
-`sonar init` writes a `sonar.yaml` at the git root from what is listening right
-now — desktop apps and ports below 1024 left out. It refuses to overwrite
-without `--force`, and `--dry-run` prints the file instead of writing it.
-`--merge` appends to a file that is already there instead of refusing, and
-`--service name:port[:health]` — repeatable — writes the services you name
-instead of the ones it found, keeping the command it guessed for a port you
-kept. `--force` and `--merge` are mutually exclusive.
+`sonar init` writes a `sonar.yaml` at the git root from what it can state: the
+ports listening inside the project right now (desktop apps and ports below 1024
+left out), plus what a compose file or a `package.json` declares outright — one
+service per compose service, with its published port and its `depends_on`, and
+the `dev` script run by whichever package manager your lockfile commits you to.
+Where the two disagree, the listening port wins: it is evidence, not a
+statement. The file it writes says what it could not work out.
+
+Nothing else is detected. A Makefile target, a Procfile line, an entry point
+buried in a framework — those are guesses about your repository, and a table of
+them would never be finished. That part goes to an agent:
+
+```sh
+sonar init --agent              # whichever agent is installed
+sonar init --agent codex        # name one
+sonar init --agent claude -- --allow-dangerously-skip-permissions
+```
+
+`--agent` opens the coding agent you already have, in this terminal, with the
+prompt already sent: what sonar knows, the draft it would have written, the
+format, and the rule that it writes the file and starts nothing. You watch it
+read the repository and approve its edits exactly as you always do — it is your
+agent, under your permissions — and anything after `--` is passed to it. sonar
+knows `claude`, `codex`, `cursor-agent` and `opencode`; with several installed,
+name one. When the agent exits, sonar loads the file and prints the services it
+declares, or why it does not load. Without a terminal — a pipe, CI — `--agent`
+prints the prompt instead of starting anything.
+
+It refuses to overwrite without `--force`, and `--dry-run` prints the file
+instead of writing it. `--merge` appends to a file that is already there
+instead of refusing, and `--service name:port[:health]` — repeatable — writes
+the services you name instead of the ones it found, keeping the command it
+guessed for a port you kept. `--force` and `--merge` are mutually exclusive.
 
 `sonar groups add <group> <name> --port N` appends a service to that group's
 `sonar.yaml`, with `--cmd`, `--cwd`, `--health`, `--description`, `--icon`,
@@ -631,7 +657,7 @@ Every write takes `--host` too, and does there exactly what it does here:
 ```sh
 sonar kill 3000 --host hetzner                 # stop a port on that machine
 sonar kill -g api --host hetzner               # a whole group of its services
-sonar kill-all --filter docker --host hetzner  # its containers
+sonar kill --all --filter docker --host hetzner # its containers
 sonar up api --host hetzner                    # start a group from its sonar.yaml
 sonar logs 3000 --host hetzner                 # tail its output here
 sonar rename 3000 storefront --host hetzner    # its name, in its database
@@ -749,8 +775,7 @@ services:               # label custom/unknown ports
 ```
 
 Invalid values are ignored with a warning and sonar carries on with defaults.
-Environment overrides that have no config key: `SONAR_DB`, `SONAR_SOCKET`,
-`SONAR_NO_HINTS=1` to silence the migration notices below, and
+Environment overrides that have no config key: `SONAR_DB`, `SONAR_SOCKET` and
 `SONAR_NO_AUTOSTART=1` to stop any sonar client from starting a daemon it did
 not find — useful in CI, where a build should never leave a process behind.
 
@@ -935,30 +960,21 @@ tray` finds an app installed with `--dir` and how `sonar doctor`'s
 
 ## Moving from the old commands
 
-The pre-group commands still work and print a single line on stderr saying what
-replaced them. They go away one minor release from now. `SONAR_NO_HINTS=1`
-silences the notices, and `--json` output never carries them.
+These went away in v0.9.0, a release after they started printing what replaced
+them:
 
-| Old | New |
+| Removed | Use |
 |---|---|
 | `sonar run --tag X -- cmd` | `sonar start --group X -- cmd` |
 | `sonar runs` | `sonar start --list` |
 | `sonar list --tag X` | `sonar list --group X` |
 | `sonar kill-all --filter docker` | `sonar kill --all --filter docker` |
-| `sonar down X` (a profile) | `sonar kill -g X`; `sonar down` now stops a `sonar.yaml` project |
-| `sonar profile create X` | `sonar init` |
-| `sonar profile show X` | `sonar groups X` |
-| `sonar up X` (checked a profile) | `sonar up X` now *starts* the group |
-| `sonar tray` (Swift menu bar app) | `sonar tray` launches the desktop app |
+| `sonar down X` (a profile) | `sonar kill -g X` — `sonar down` now stops a `sonar.yaml` project |
+| `sonar profile list`, `show`, `create`, `delete` | `sonar groups`, `sonar groups X`, `sonar init` |
 
 Profiles were a per-machine snapshot of ports; `sonar.yaml` is committed with
-the project. Convert one and read it before you keep it — nothing is written
-for you:
-
-```sh
-sonar profile list
-# check
-```
+the project. `sonar profile export` is the one profile command still here, and
+it exists to get you off them — it prints, and never writes:
 
 ```sh
 sonar profile export my-app > sonar.yaml
