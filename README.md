@@ -1,14 +1,13 @@
 <div align="center">
 
 ```
-██████   ███   ██████   ██   ██████
-██          ██     ██ ██  ██     ██
-██     ██   ██ ██  ██ ██  ██     ██
-    ██ ██   ██ ██  ██ ██  ██ ████
-    ██ ██      ██  ██ ██  ██ ██  ██
-██████   ███   ██  ██ ██  ██ ██  ██
+██████    ███    ██████    ██    ██████
+██           ██      ██  ██  ██      ██
+██      ██   ██  ██  ██  ██  ██      ██
+    ██  ██   ██  ██  ██  ██  ██  ████
+    ██  ██       ██  ██  ██  ██  ██  ██
+██████    ███    ██  ██  ██  ██  ██  ██
 ```
-
 Know what's running on your machine.
 
 </div>
@@ -1050,3 +1049,6 @@ Thanks to everyone who has contributed to sonar!
 <a href="https://github.com/RasKrebs/sonar/graphs/contributors">
   <img src="https://stg.contrib.rocks/image?repo=RasKrebs/sonar" />
 </a>
+
+## Support
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/raskrebs)
