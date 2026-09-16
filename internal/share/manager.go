@@ -69,6 +69,9 @@ type Manager struct {
 	connectTimeout time.Duration
 	// installID is this machine's id for the fallback key.
 	installID string
+	// tunnelURL is where the control connection is dialled. Empty means the
+	// relay itself, which is what every hosted install uses.
+	tunnelURL string
 
 	mu     sync.Mutex
 	shares map[string]*live
@@ -85,6 +88,9 @@ type Options struct {
 	Dial           func(ctx context.Context, cfg tunnel.Config) error
 	ConnectTimeout time.Duration
 	InstallID      string
+	// TunnelURL is where a share's control connection goes when that is not
+	// the relay's own origin (config `share.tunnel`). Empty means the relay.
+	TunnelURL string
 }
 
 // live is one share this daemon is holding.
@@ -113,6 +119,7 @@ func New(opts Options) *Manager {
 		dial:           opts.Dial,
 		connectTimeout: opts.ConnectTimeout,
 		installID:      opts.InstallID,
+		tunnelURL:      opts.TunnelURL,
 		shares:         map[string]*live{},
 	}
 	if m.session == nil {
@@ -216,7 +223,7 @@ func (m *Manager) Create(ctx context.Context, snap state.Snapshot, p rpc.ShareCr
 	l.cancel = cancel
 
 	cfg := tunnel.Config{
-		RelayURL:  m.session.Relay(),
+		RelayURL:  m.controlURL(),
 		Key:       token,
 		Share:     view.Slug,
 		LocalPort: t.Port,
@@ -251,6 +258,15 @@ func (m *Manager) Create(ctx context.Context, snap state.Snapshot, p rpc.ShareCr
 	m.log.Info("share published", "slug", view.Slug, "url", out.URL,
 		"port", t.Port, "status", out.Status, "ttl", ttl)
 	return out, nil
+}
+
+// controlURL is where the tunnel dials. The relay's own origin unless this
+// install points the share edge somewhere else.
+func (m *Manager) controlURL() string {
+	if u := strings.TrimSpace(m.tunnelURL); u != "" {
+		return u
+	}
+	return m.session.Relay()
 }
 
 // request builds the body of `POST /v1/shares` from a resolved target.

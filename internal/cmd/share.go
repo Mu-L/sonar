@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-isatty"
+
 	"github.com/raskrebs/sonar/internal/daemon"
 	"github.com/raskrebs/sonar/internal/daemon/client"
 	"github.com/raskrebs/sonar/internal/daemon/rpc"
@@ -60,7 +62,12 @@ var shareCmd = &cobra.Command{
 		"The daemon holds the share, so this command prints the URL and exits.\n" +
 		"The share ends when the service stops, or when the TTL runs out.",
 	Args: cobra.MaximumNArgs(1),
-	RunE: runShare,
+	// The messages here are the feature: the reach refusal and the limit offer
+	// are both several lines meant to be read. Cobra printing them a second
+	// time above the usage block would bury them.
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	RunE:          runShare,
 }
 
 func init() {
@@ -81,7 +88,6 @@ func init() {
 }
 
 func runShare(cmd *cobra.Command, args []string) error {
-	cmd.SilenceUsage = true
 	ctx := cmd.Context()
 
 	switch {
@@ -244,6 +250,12 @@ func describeShare(s state.Share) string {
 	}
 	if what == "" && s.TargetGroup != nil {
 		what = *s.TargetGroup
+	}
+	if what == "" && s.TargetPort > 0 {
+		// A share on the fallback key has no service and no group to name, so
+		// the port is what the person will recognise. "a service" tells them
+		// nothing about which of their shares is about to be moved.
+		what = fmt.Sprintf("localhost:%d", s.TargetPort)
 	}
 	if what == "" {
 		what = "a service"
@@ -508,9 +520,14 @@ func shareIn(err error) *state.Share {
 	return nil
 }
 
-// stdinIsTerminal is whether there is someone there to answer a question. It is
-// a variable so a test can be both a terminal and not one.
-var stdinIsTerminal = func() bool {
-	info, err := os.Stdin.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
-}
+// stdinIsTerminal is whether there is someone there to answer a question.
+//
+// It is a real terminal check and not "is stdin a character device", which is
+// the cheap version used elsewhere in this package: /dev/null is a character
+// device too, so the cheap version prompts into a void whenever a share runs
+// from a script or a CI job, reads EOF, and calls that a no. Here the answer
+// decides whether someone's live share gets moved, so it is worth a dependency
+// that is already in the module graph.
+//
+// It is a variable so a test can be both a terminal and not one.
+var stdinIsTerminal = func() bool { return isatty.IsTerminal(os.Stdin.Fd()) }

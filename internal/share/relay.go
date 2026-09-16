@@ -300,6 +300,12 @@ func (m *Manager) viewToShare(v shareView, reach string) state.Share {
 		name := v.ServiceName
 		out.TargetService = &name
 	}
+	if v.Repo == "" && v.ProjectRoot != "" && out.TargetGroup == nil {
+		// A fallback-key share has no group name, but the directory is what a
+		// person will recognise it by when a client has to name it.
+		root := v.ProjectRoot
+		out.TargetGroup = &root
+	}
 	if v.ExpiresAt != "" {
 		at := v.ExpiresAt
 		out.ExpiresAt = &at

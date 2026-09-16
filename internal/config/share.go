@@ -26,11 +26,25 @@ const DefaultRelay = "https://relay.trysonar.dev"
 // how someone tries a self-hosted one without editing a file.
 const RelayEnv = "SONAR_RELAY"
 
+// TunnelEnv overrides share.tunnel for one process, the way RelayEnv overrides
+// share.relay.
+const TunnelEnv = "SONAR_RELAY_TUNNEL"
+
 // ShareConfig is the `share:` block of the user config.
 type ShareConfig struct {
 	// Relay is the relay's base origin ("https://relay.trysonar.dev"). Empty
 	// means DefaultRelay.
 	Relay string `yaml:"relay"`
+	// Tunnel is where a share's control connection is dialled, when that is
+	// not the relay itself. Empty — which is what every hosted install uses —
+	// means Relay, because one hostname behind one proxy serves both.
+	//
+	// It exists because the share edge and the control plane are not promised
+	// to be the same process: sonar-relay/docs/SHARE.md names "a second box
+	// for the share edge" as a live option and says the code should not assume
+	// otherwise, and a relay run locally already splits them across two ports.
+	// One setting is cheaper than discovering that assumption later.
+	Tunnel string `yaml:"tunnel"`
 }
 
 // Relay returns the relay origin this machine uses: $SONAR_RELAY, then
@@ -43,6 +57,16 @@ type ShareConfig struct {
 func (c *Config) Relay() string {
 	relay, _ := ResolveRelay(os.Getenv(RelayEnv), c.Share.Relay)
 	return relay
+}
+
+// Tunnel returns where a share's control connection is dialled: $SONAR_RELAY_TUNNEL,
+// then `share.tunnel`, then whatever Relay returns.
+func (c *Config) Tunnel() string {
+	tunnel, _ := ResolveRelay(os.Getenv(TunnelEnv), c.Share.Tunnel)
+	if strings.TrimSpace(os.Getenv(TunnelEnv)) == "" && strings.TrimSpace(c.Share.Tunnel) == "" {
+		return c.Relay()
+	}
+	return tunnel
 }
 
 // ResolveRelay is Relay with both inputs given, so the precedence and the

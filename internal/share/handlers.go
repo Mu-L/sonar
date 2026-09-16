@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/raskrebs/sonar/internal/config"
 	"github.com/raskrebs/sonar/internal/daemon"
 	"github.com/raskrebs/sonar/internal/daemon/rpc"
 	"github.com/raskrebs/sonar/internal/scanner"
@@ -56,8 +57,16 @@ func init() {
 }
 
 func start(rt *daemon.Runtime) {
-	SetManager(New(Options{Logger: rt.Logger}))
-	rt.Logger.Debug("sharing ready", "install_id", InstallID())
+	cfg, warnings := config.Load()
+	for _, w := range warnings {
+		rt.Logger.Warn(w)
+	}
+	tunnelURL := ""
+	if cfg.Tunnel() != cfg.Relay() {
+		tunnelURL = cfg.Tunnel()
+	}
+	SetManager(New(Options{Logger: rt.Logger, TunnelURL: tunnelURL}))
+	rt.Logger.Debug("sharing ready", "relay", cfg.Relay(), "tunnel", cfg.Tunnel())
 }
 
 // sessionAdapter is internal/session seen as this package's `caller`. It exists
